@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Household Planner">
+  <rect width="512" height="512" rx="112" fill="#0A0D11"/>
+  <!-- roofline + house mark -->
+  <path d="M136 244 L256 148 L376 244" fill="none" stroke="#34E0A1" stroke-width="26"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="168" y="244" width="176" height="132" rx="18" fill="none" stroke="#EAF0F2" stroke-width="22"/>
+  <!-- accent dot (the wordmark's ·) -->
+  <circle cx="256" cy="310" r="26" fill="#34E0A1"/>
+</svg>

@@ -4,6 +4,9 @@
 import { supa, resolveHousehold, loadAll, seedIfEmpty } from "./store.js";
 import { mountFinances } from "./finances.js";
 import { mountProjects } from "./projects.js";
+import { mountForecast } from "./forecast.js";
+import { mountTasks } from "./tasks.js";
+import { openSettings } from "./settings.js";
 
 /* ---- Nav ---- */
 const TABS = [
@@ -52,9 +55,8 @@ document.getElementById("themeBtn").onclick = () =>
   applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
 applyTheme(localStorage.getItem("hp-theme") || "dark");
 
-/* ---- Settings gear (placeholder until Session 4) ---- */
-document.getElementById("gearBtn").onclick = () =>
-  alert("Settings — cash buffer, priority weights, scenario default, integrations. Coming in Session 4.");
+/* ---- Settings gear ---- */
+document.getElementById("gearBtn").onclick = () => openSettings();
 
 /* ---- Auth ---- */
 const gate = document.getElementById("gate");
@@ -85,13 +87,21 @@ async function onSession(session) {
       await resolveHousehold();
       await loadAll();      // pull whatever exists
       await seedIfEmpty();  // idempotent placeholders on first open
+      mountForecast();
       mountFinances();
       mountProjects();
+      mountTasks();
     }
   } else {
     gate.style.display = "grid";
     app.hidden = true;
   }
+}
+
+/* ---- Service worker (offline + installable) ---- */
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () =>
+    navigator.serviceWorker.register("sw.js").catch(() => {}));
 }
 
 /* ---- Boot ---- */

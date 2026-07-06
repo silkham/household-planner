@@ -3,6 +3,7 @@
 //  All planner data lives in the `house_project` schema — use the HP handle.
 // ============================================================================
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { computeForecast } from "./engine.js";
 
 const SUPABASE_URL  = "https://dgbbyijhabjozqrkokrq.supabase.co";
 // anon key is a public client key — RLS is the real gate.
@@ -79,6 +80,39 @@ export async function deleteRow(table, id) {
   const { error } = await HP.from(table).delete().eq("id", id);
   if (error) throw error;
   await loadAll();
+}
+
+// settings is a singleton keyed on household_id (no `id`), so it needs its own
+// save path — upsert on the PK rather than the generic id-based saveRow.
+export async function saveSettings(patch) {
+  const hid = await resolveHousehold();
+  const payload = { ...patch, household_id: hid };
+  const { error } = state.settings
+    ? await HP.from("settings").update(payload).eq("household_id", hid)
+    : await HP.from("settings").insert(payload);
+  if (error) throw error;
+  await loadAll();
+}
+
+// ---- shared live forecast --------------------------------------------------
+// Feeds the engine derived project costs (sum of line items when present) so the
+// forecast is correct even if a stored estimated_cost has drifted. Used by the
+// Forecast tab and the Projects affordability ticks — one source of truth.
+export function currentForecast() {
+  const projects = state.projects.map((p) => {
+    const items = state.project_items.filter((i) => i.project_id === p.id);
+    if (!items.length) return p;
+    const est = items.reduce((s, i) => s + (Number(i.estimated_cost) || 0), 0);
+    const act = items.reduce((s, i) => s + (i.actual_cost == null ? 0 : Number(i.actual_cost)), 0);
+    return { ...p, estimated_cost: est, actual_cost: act };
+  });
+  return computeForecast({
+    accounts: state.accounts, recurring_flows: state.recurring_flows,
+    salary_changes: state.salary_changes, life_events: state.life_events,
+    bonuses: state.bonuses, projects, financing_options: state.financing_options,
+    settings: state.settings || {},
+    scenario: (state.settings && state.settings.forecast_confidence) || "realistic",
+  });
 }
 
 // ---- idempotent placeholder seed (per spec — client-side, first open) ------

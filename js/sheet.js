@@ -149,7 +149,8 @@ export function openSheet(cfg) {
   const head = el("div", "sheet-head");
   const cancel = el("button", "sheet-txtbtn", "Cancel");
   cancel.onclick = close;
-  const save = el("button", "sheet-txtbtn primary", isEdit ? "Save" : "Add");
+  const saveLabel = cfg.saveLabel || (isEdit ? "Save" : "Add");
+  const save = el("button", "sheet-txtbtn primary", saveLabel);
   head.append(cancel, el("div", "sheet-title", cfg.title), save);
   panel.appendChild(head);
 
@@ -209,10 +210,13 @@ export function openSheet(cfg) {
     if (cfg.derive) Object.assign(clean, cfg.derive(clean));
     save.disabled = true; save.textContent = "Saving…";
     try {
-      await saveRow(cfg.table, clean);
+      // cfg.save overrides the default id-based write (e.g. the settings
+      // singleton, keyed on household_id rather than id).
+      if (cfg.save) await cfg.save(clean);
+      else await saveRow(cfg.table, clean);
       close(); cfg.onDone && cfg.onDone();
     } catch (err) {
-      save.disabled = false; save.textContent = isEdit ? "Save" : "Add";
+      save.disabled = false; save.textContent = saveLabel;
       alert("Save failed: " + err.message);
     }
   };

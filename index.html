@@ -224,9 +224,18 @@ main { flex: 1; padding: 20px 18px 108px; }
 .screen { display: none; }
 .screen.active { display: block; }
 
+/* chart draw-on: line strokes itself in, then the area fill fades up */
+@keyframes sparkDraw { from { stroke-dashoffset: 1000; } to { stroke-dashoffset: 0; } }
+@keyframes areaFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pulseHalo { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+.spark-line { stroke-dasharray: 1000; animation: sparkDraw 1.3s var(--ease) forwards; }
+.spark-area { opacity: 0; animation: areaFade .6s var(--ease) .7s forwards; }
+.pt-danger { animation: pulseHalo 1.6s var(--ease) infinite; }
+
 @media (prefers-reduced-motion: reduce) {
   .aurora .blob { animation: none !important; }
   .screen.active > * { animation: none !important; }
+  .spark-line, .spark-area, .pt-danger { animation: none !important; stroke-dashoffset: 0 !important; opacity: 1 !important; }
   * { scroll-behavior: auto !important; }
 }
 
@@ -367,6 +376,85 @@ main { flex: 1; padding: 20px 18px 108px; }
 .sp-in { max-width: 140px; text-align: right; }
 
 /* ============================================================= *
+ *  Tasks tab                                                    *
+ * ============================================================= */
+.tk-filter { max-width: 460px; margin-bottom: 16px; }
+.tk-group { margin-bottom: 20px; }
+.tk-ghead { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
+.tk-gname { font-family: var(--font-head); font-weight: 500; font-size: 15px; }
+.tk-gtot { font-size: 12.5px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.tk-list { display: flex; flex-direction: column; gap: 6px; }
+.tk-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px;
+          border: 1px solid var(--hairline); border-radius: var(--r-ctrl); background: var(--card); }
+.tk-row.done .tk-name { text-decoration: line-through; color: var(--text-faint); }
+.tk-tick { flex: none; background: none; border: none; cursor: pointer; color: var(--text-faint);
+           display: grid; place-items: center; padding: 2px; }
+.tk-tick.on { color: var(--mint); }
+.tk-tick svg { width: 20px; height: 20px; }
+.tk-main { flex: 1; min-width: 0; cursor: pointer; }
+.tk-name { font-weight: 600; font-size: 13.5px; }
+.tk-sub { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.tk-act { font-size: 12px; }
+.tk-nums { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
+.tk-est { font-family: var(--font-head); font-weight: 500; font-size: 14px; font-variant-numeric: tabular-nums; }
+.tk-actin { width: 96px; padding: 7px 9px; margin: 0; text-align: right; font-size: 13px; }
+
+/* ============================================================= *
+ *  Forecast tab                                                 *
+ * ============================================================= */
+.cf-top { margin-bottom: 12px; }
+.cf-scenario { max-width: 420px; margin-bottom: 14px; }
+.cf-card { padding: 14px 10px 6px; margin-bottom: 14px; }
+.cf-chart { width: 100%; height: auto; display: block; overflow: visible; }
+.ax-lbl { font-family: var(--font-body); font-size: 10.5px; fill: var(--text-faint); }
+.ax-lbl.buf { fill: var(--coral); }
+.ax-lbl.low { fill: var(--text-dim); font-weight: 600; }
+
+.cf-alerts { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
+.cf-alert {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; cursor: pointer;
+  padding: 12px 14px; border-radius: var(--r-ctrl); font-family: var(--font-body); font-size: 13.5px;
+  color: var(--text); background: color-mix(in srgb, var(--t) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--t) 28%, transparent);
+  transition: transform var(--dur-1) var(--ease);
+}
+.cf-alert:active { transform: scale(.995); }
+.cf-alert > i:first-child { width: 17px; height: 17px; color: var(--t); flex: none; }
+.cf-alert span { flex: 1; }
+.cf-alert b { font-weight: 700; }
+.cf-alert .chev { width: 15px; height: 15px; color: var(--text-faint); flex: none; }
+
+.cf-tablehead, .mr-head {
+  display: grid; grid-template-columns: 1fr auto auto 20px; gap: 12px; align-items: center;
+}
+.cf-tablehead {
+  padding: 0 14px 8px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--text-faint); font-weight: 600;
+}
+.cf-tablehead span:nth-child(2), .cf-tablehead span:nth-child(3) { text-align: right; }
+.cf-table { display: flex; flex-direction: column; gap: 6px; }
+.mrow { border: 1px solid var(--hairline); border-radius: var(--r-ctrl); background: var(--card);
+        overflow: hidden; transition: border-color var(--dur-1) var(--ease); }
+.mrow.below { border-color: color-mix(in srgb, var(--amber) 45%, var(--hairline)); }
+.mrow.neg { border-color: color-mix(in srgb, var(--coral) 55%, var(--hairline)); }
+.mrow.flash { animation: rowFlash 1.4s var(--ease); }
+@keyframes rowFlash { 0%,100% { box-shadow: none; } 30% { box-shadow: 0 0 0 2px var(--violet); } }
+.mr-head { width: 100%; padding: 12px 14px; background: none; border: none; cursor: pointer;
+           font-family: var(--font-body); color: var(--text); }
+.mr-mon { font-weight: 600; font-size: 13.5px; }
+.mr-net { text-align: right; font-size: 13px; font-variant-numeric: tabular-nums; }
+.mr-cash { text-align: right; font-family: var(--font-head); font-weight: 500; font-size: 15px; font-variant-numeric: tabular-nums; }
+.mr-chev { width: 16px; height: 16px; color: var(--text-faint); }
+.mr-detail { padding: 2px 14px 14px; border-top: 1px solid var(--hairline); }
+.mr-nums { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 10px 0 8px; font-size: 12.5px; color: var(--text-dim); }
+.mr-nums b { font-weight: 600; }
+.bd-grp { margin-top: 8px; }
+.bd-h { font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--text-faint); font-weight: 600; margin-bottom: 4px; }
+.bd-row { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--text-dim); padding: 2px 0; }
+.bd-row span:last-child { font-variant-numeric: tabular-nums; }
+@media (min-width: 860px) { .cf-card { padding: 18px 16px 8px; } }
+
+/* ============================================================= *
  *  Bottom sheet + form controls                                *
  * ============================================================= */
 .sheet-overlay {
@@ -467,17 +555,7 @@ select.field { appearance: none; background-image:
     <main>
       <!-- Forecast -->
       <section class="screen active" data-screen="forecast">
-        <div class="tile glass">
-          <div class="eyebrow">Forecast</div>
-          <h2>The money view</h2>
-          <p class="muted">A 24-month rolling cashflow — income minus life expenses minus project spend, tracked against your buffer. The reason to open the app.</p>
-          <span class="pending"><i data-lucide="circle-dashed" style="width:14px;height:14px"></i> Chart, alerts &amp; monthly table — Session 4</span>
-        </div>
-        <div class="tile glass">
-          <div class="eyebrow" style="color:var(--violet)">Scenario</div>
-          <h2>Conservative · Realistic · Optimistic</h2>
-          <p class="muted">Same data, three confidence filters. Christine's partnership jump and the annual bonuses don't disappear — they're flagged by how sure we are.</p>
-        </div>
+        <div id="forecast-root"></div>
       </section>
 
       <!-- Projects -->
@@ -492,12 +570,7 @@ select.field { appearance: none; background-image:
 
       <!-- Tasks -->
       <section class="screen" data-screen="tasks">
-        <div class="tile glass">
-          <div class="eyebrow">Tasks</div>
-          <h2>What to do &amp; buy next</h2>
-          <p class="muted">Every project line item rolled up into one checklist, grouped by project. Filter to To&nbsp;do, Quoted, or Over&nbsp;budget.</p>
-          <span class="pending"><i data-lucide="circle-dashed" style="width:14px;height:14px"></i> Cross-project roll-up — Session 4</span>
-        </div>
+        <div id="tasks-root"></div>
       </section>
     </main>
   </div>

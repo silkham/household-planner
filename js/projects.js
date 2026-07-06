@@ -4,9 +4,9 @@
 //  carries line items (sum→total), the budget lock, actuals/variance and a
 //  per-month cost-spread override.
 // ============================================================================
-import { state, subscribe, saveRow } from "./store.js";
+import { state, subscribe, saveRow, currentForecast } from "./store.js";
 import { openSheet, fmtGBP, fmtMonth } from "./sheet.js";
-import { computeForecast, projectAffordability, monthIndex, fromIndex } from "./engine.js";
+import { projectAffordability, monthIndex, fromIndex } from "./engine.js";
 
 const opt = (arr) => arr.map((v) => ({ label: v, value: v }));
 const CATEGORIES = opt(["Structural", "Cosmetic", "Repair", "Garden", "Energy", "Furniture"]);
@@ -46,24 +46,8 @@ const projectCost = (p) => {
 // (Replaced the derived impact/urgency/effort × weights score in Session 4.)
 const priorityOf = (p) => Number(p.priority) || 3;
 
-// ---- live forecast (one pass per render, reused for every card) ------------
-function currentForecast() {
-  // feed derived costs so the engine is correct even if the stored field drifts
-  const projects = state.projects.map((p) => {
-    const its = itemsFor(p.id);
-    return its.length ? { ...p, estimated_cost: sumEst(its), actual_cost: sumAct(its) } : p;
-  });
-  return computeForecast({
-    accounts: state.accounts, recurring_flows: state.recurring_flows,
-    salary_changes: state.salary_changes, life_events: state.life_events,
-    bonuses: state.bonuses, projects, financing_options: state.financing_options,
-    settings: state.settings || {},
-    scenario: (state.settings && state.settings.forecast_confidence) || "realistic",
-  });
-}
-
 // keep the stored project total in sync with its line items (engine reads it)
-async function syncTotals(pid) {
+export async function syncTotals(pid) {
   const its = itemsFor(pid);
   if (!its.length) return;
   const p = state.projects.find((x) => x.id === pid);
@@ -239,7 +223,9 @@ function wireSpread(box, p, rebuild) {
 }
 
 // ---- line item child sheet -------------------------------------------------
-function editItem(project, record, onDone) {
+// Exported so the Tasks tab edits the very same project_items rows (one source
+// of truth) and reuses syncTotals on save.
+export function editItem(project, record, onDone) {
   const isNew = !record.id;
   const nextOrder = itemsFor(project.id).length;
   const rec = isNew
