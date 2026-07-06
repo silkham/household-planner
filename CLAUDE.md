@@ -217,6 +217,10 @@ Locked in Session 1. These are the non-obvious facts that will bite a fresh sess
 
 **Anon key** is embedded in `index.html` — that's correct (it's the public client key; RLS is the real gate). The service-role/secret keys are never in client code.
 
+**File layout (as-built, Session 2).** The app is **no longer single-file** — it's `index.html` (shell + all CSS) plus **`js/*.js` ES modules**, loaded via `<script type="module" src="js/app.js">`. Still **no build step** (browser-native ESM; imports from esm.sh). Modules: `store.js` (Supabase `HP` handle, household resolution, state cache, generic `saveRow`/`deleteRow`, idempotent client-side seed), `sheet.js` (reusable bottom-sheet form driven by per-entity field schemas), `engine.js` (cashflow — real `monthlyPayment` amortisation; `computeForecast` is a stub until Session 3), `finances.js` (the Finances tab), `app.js` (boot/nav/theme/auth). Keep new features as modules under `js/`; don't collapse back into one file. Note the multi-file layout means the dev server must serve the `js/` subtree (the scratchpad Ruby workaround copies it too).
+
+**Seed landmine.** The spec's placeholder "Christine → Partner uplift" `salary_changes` row is **not seeded** — `salary_changes.flow_id` is `NOT NULL` and we intentionally don't seed a fake salary flow. The Salary changes section shows an empty-state hint instead; the row becomes creatable once a real income flow exists.
+
 ---
 
 ## The Cashflow Engine
