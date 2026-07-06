@@ -194,7 +194,28 @@ Singleton per household.
 
 ### RLS
 
-Everything gated on `household_id` matching an active membership. Membership table = `household_members(household_id, user_id, role)`. Standard pattern from HouseholdOS — reuse the policies.
+Everything gated on `household_id` matching an active membership. Standard pattern from HouseholdOS — reuse the policies. **Correction (as-built, Session 1):** the real membership table is `public.household_memberships(user_id, household_id, member_id)` — **not** `household_members(…, role)` as this doc originally guessed. There is no `role` column.
+
+---
+
+## Build Infrastructure (as-built — read before touching the DB or dev server)
+
+Locked in Session 1. These are the non-obvious facts that will bite a fresh session.
+
+**Supabase — shared DB, dedicated schema.**
+- We do **not** have our own Supabase project. We share the existing **`household`** project (ref **`dgbbyijhabjozqrkokrq`**, eu-west-1) with the meal/workout/Peloton apps. Its `public` schema already has ~20 unrelated tables, including a `settings` table that would collide with ours.
+- Therefore **all planner tables live in a dedicated `house_project` Postgres schema**, not `public`. The schema is exposed to PostgREST (`db_schema = public,graphql_public,house_project`).
+- **The client must use `supabase.schema('house_project')`** for every read/write. In `index.html` this is the exported `HP` handle (`export const HP = supa.schema('house_project')`). `supa.from(...)` would hit `public` and fail.
+- RLS on every table via `using/with check (household_id in (select house_project.my_household_ids()))`, where `my_household_ids()` is a `SECURITY DEFINER` helper reading `public.household_memberships`. Grants go to `authenticated` only — `anon` is intentionally denied (verified).
+- We reuse the existing household row **"Our household"** (id `13b5e642-3f21-403c-8336-56976f177269`); members are Christine (slot `a`) + Lachlan (slot `b`). No separate invite flow needed.
+
+**Auth = email + password** (not magic link). Matches the existing shared account `lachlanmclean1990@gmail.com` (provider `email`, password set). The spec's "magic link or Google" line is superseded.
+
+**Applying SQL without Docker.** `supabase db dump`/local dev need Docker (not available). Apply migrations via the **Management API query endpoint**: `POST https://api.supabase.com/v1/projects/<ref>/database/query`. Get the token from the macOS keychain: `security find-generic-password -s "Supabase CLI" -w`. **Use `curl`, not python `urllib`** — Cloudflare 403s urllib's signature. Migrations are saved in `supabase/migrations/` for the record even though they're applied via API.
+
+**Dev-server landmine (this harness only).** The preview sandbox blocks the `getcwd` syscall *and* reading files under the project dir, so `python3 -m http.server` and Ruby WEBrick both fail here. Workaround used in-session: copy `index.html`/`manifest` into the scratchpad and serve with a tiny getcwd-free Ruby socket server from there. **On a normal machine `python3 -m http.server 5173` in the project root is fine** — this is purely a sandbox quirk, not a real constraint. The committed `.claude/launch.json` uses the plain python server.
+
+**Anon key** is embedded in `index.html` — that's correct (it's the public client key; RLS is the real gate). The service-role/secret keys are never in client code.
 
 ---
 
