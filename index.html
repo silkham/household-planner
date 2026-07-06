@@ -285,7 +285,9 @@ main { flex: 1; padding: 20px 18px 108px; }
     <form id="authForm">
       <input id="email" class="field" type="email" inputmode="email" autocomplete="email"
              placeholder="you@email.com" required />
-      <button id="authBtn" class="btn" type="submit">Send magic link</button>
+      <input id="password" class="field" type="password" autocomplete="current-password"
+             placeholder="Password" required />
+      <button id="authBtn" class="btn" type="submit">Sign in</button>
     </form>
     <p id="authMsg" class="muted" style="margin-top:14px; min-height:20px;"></p>
   </div>
@@ -433,16 +435,13 @@ const authBtn = document.getElementById("authBtn");
 document.getElementById("authForm").onsubmit = async (e) => {
   e.preventDefault();
   const email = document.getElementById("email").value.trim();
-  if (!email) return;
-  authBtn.disabled = true; authMsg.textContent = "Sending…";
-  const { error } = await supa.auth.signInWithOtp({
-    email,
-    options: { emailRedirectTo: location.origin + location.pathname },
-  });
+  const password = document.getElementById("password").value;
+  if (!email || !password) return;
+  authBtn.disabled = true; authMsg.textContent = "Signing in…";
+  const { error } = await supa.auth.signInWithPassword({ email, password });
   authBtn.disabled = false;
-  authMsg.textContent = error
-    ? "Couldn't send: " + error.message
-    : "Check your email for the magic link ✦";
+  authMsg.textContent = error ? error.message : "";
+  // on success, onAuthStateChange swaps to the app
 };
 
 document.getElementById("signoutBtn").onclick = async () => {
