@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0A0D11" />
+<title>Household Planner</title>
+<link rel="manifest" href="manifest.webmanifest" />
+
+<!-- Fonts: Fraunces (headings) + Inter Tight (body/UI) -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter+Tight:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+
+<style>
+/* ============================================================= *
+ *  Design tokens — "living money-app". Dark-first + full light. *
+ * ============================================================= */
+:root {
+  --font-head: "Fraunces", Georgia, serif;
+  --font-body: "Inter Tight", system-ui, sans-serif;
+
+  --ease: cubic-bezier(.22,.6,.36,1);
+  --dur-1: 180ms; --dur-2: 240ms; --dur-3: 360ms;
+
+  --r-card: 16px; --r-ctrl: 10px;
+}
+
+/* ---- Dark (default) ---- */
+html[data-theme="dark"] {
+  --base:        #0A0D11;
+  --text:        #EAF0F2;
+  --text-dim:    #8B98A2;
+  --text-faint:  #5A6771;
+
+  --card:        rgba(20,27,34,.5);
+  --card-solid:  #141B22;
+  --card-top:    inset 0 1px 0 rgba(255,255,255,.05);
+  --hairline:    rgba(255,255,255,.07);
+  --shadow:      0 10px 30px rgba(0,0,0,.35);
+
+  --mint:   #34E0A1;
+  --coral:  #FF6B5A;
+  --amber:  #FFA24B;
+  --violet: #7B5CFF;
+  --blue:   #2B8BFF;
+
+  --person-lachlan: #6C8Cff;   /* indigo/blue */
+  --person-christine: #FF6B5A; /* coral */
+
+  --aurora-blend: screen;
+  --aurora-op: .32;
+  --nav-bg: rgba(12,16,20,.62);
+}
+
+/* ---- Light ---- */
+html[data-theme="light"] {
+  --base:        #F6F8F6;
+  --text:        #16201B;
+  --text-dim:    #566A5F;
+  --text-faint:  #8A9B92;
+
+  --card:        #FFFFFF;
+  --card-solid:  #FFFFFF;
+  --card-top:    none;
+  --hairline:    #E4E7E3;
+  --shadow:      0 2px 10px rgba(27,38,32,.05);
+
+  --mint:   #12A66E;
+  --coral:  #E5533D;
+  --amber:  #C9820F;
+  --violet: #6B4FE0;
+  --blue:   #2472D6;
+
+  --person-lachlan: #4F5FE0;
+  --person-christine: #E5533D;
+
+  --aurora-blend: normal;
+  --aurora-op: .40;
+  --nav-bg: rgba(255,255,255,.72);
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  background: var(--base);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+h1,h2,h3,.font-head { font-family: var(--font-head); font-weight: 500; letter-spacing: -.01em; }
+
+/* ============================================================= *
+ *  Aurora background — three drifting blobs + contour texture.  *
+ * ============================================================= */
+.aurora {
+  position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none;
+}
+.aurora .blob {
+  position: absolute; border-radius: 50%;
+  filter: blur(70px); mix-blend-mode: var(--aurora-blend); opacity: var(--aurora-op);
+}
+html[data-theme="light"] .aurora .blob { filter: blur(90px); }
+.blob.mint   { width: 46vw; height: 46vw; background: radial-gradient(circle, var(--mint), transparent 70%);
+               top: -8vw; left: -6vw; animation: drift1 18s var(--ease) infinite alternate; }
+.blob.violet { width: 42vw; height: 42vw; background: radial-gradient(circle, var(--violet), transparent 70%);
+               top: 30vh; right: -8vw; animation: drift2 22s var(--ease) infinite alternate; }
+.blob.blue   { width: 40vw; height: 40vw; background: radial-gradient(circle, var(--blue), transparent 70%);
+               bottom: -10vw; left: 25vw; animation: drift3 16s var(--ease) infinite alternate; }
+.aurora .contour {
+  position: absolute; inset: 0; opacity: .5;
+  background: repeating-radial-gradient(circle at 60% 40%,
+              transparent 0, transparent 38px, var(--hairline) 39px, transparent 40px);
+}
+@keyframes drift1 { to { transform: translate(6vw, 5vh) scale(1.1); } }
+@keyframes drift2 { to { transform: translate(-5vw, -4vh) scale(1.08); } }
+@keyframes drift3 { to { transform: translate(4vw, -6vh) scale(1.12); } }
+
+/* ============================================================= *
+ *  Surfaces                                                     *
+ * ============================================================= */
+.glass {
+  background: var(--card);
+  border: 1px solid var(--hairline);
+  box-shadow: var(--card-top), var(--shadow);
+  border-radius: var(--r-card);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.chip {
+  background: var(--nav-bg);
+  border: 1px solid var(--hairline);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* ============================================================= *
+ *  Layout frame                                                *
+ * ============================================================= */
+#app { position: relative; z-index: 1; min-height: 100dvh; display: flex; flex-direction: column; }
+
+.appbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 18px calc(14px + env(safe-area-inset-top, 0px));
+  padding-top: max(14px, env(safe-area-inset-top, 0px));
+  background: var(--nav-bg);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--hairline);
+}
+.wordmark { font-family: var(--font-head); font-weight: 600; font-size: 19px; letter-spacing: -.02em; }
+.wordmark .accent { color: var(--mint); }
+.iconbtn {
+  width: 38px; height: 38px; display: grid; place-items: center;
+  border-radius: var(--r-ctrl); border: 1px solid var(--hairline);
+  background: transparent; color: var(--text-dim); cursor: pointer;
+  transition: color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease), transform var(--dur-1) var(--ease);
+}
+.iconbtn:hover { color: var(--text); border-color: var(--mint); }
+.iconbtn:active { transform: scale(.94); }
+.iconbtn svg { width: 19px; height: 19px; }
+
+/* main + nav container */
+.shell { flex: 1; display: flex; width: 100%; max-width: 1200px; margin: 0 auto; }
+
+/* desktop sidebar (hidden on mobile) */
+.sidebar { display: none; }
+
+main { flex: 1; padding: 20px 18px 108px; }
+@media (min-width: 860px) {
+  main { padding: 28px 28px 40px; }
+  .shell { gap: 8px; }
+  .sidebar {
+    display: flex; flex-direction: column; gap: 6px;
+    width: 210px; padding: 22px 12px; position: sticky; top: 70px; align-self: flex-start;
+  }
+  .bottomnav { display: none !important; }
+}
+
+/* nav items */
+.navitem {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 14px; border-radius: var(--r-ctrl);
+  color: var(--text-dim); cursor: pointer; font-weight: 500; font-size: 14.5px;
+  border: 1px solid transparent;
+  transition: all var(--dur-1) var(--ease);
+}
+.navitem svg { width: 20px; height: 20px; }
+.navitem:hover { color: var(--text); background: var(--card); }
+.navitem.active { color: var(--text); background: var(--card); border-color: var(--hairline); box-shadow: var(--card-top); }
+.navitem.active svg { color: var(--mint); }
+
+/* bottom nav (mobile) */
+.bottomnav {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+  display: flex; justify-content: space-around; align-items: center;
+  padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px));
+  background: var(--nav-bg); border-top: 1px solid var(--hairline);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+}
+.bnitem {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  color: var(--text-faint); font-size: 11px; font-weight: 500; cursor: pointer;
+  padding: 4px 14px; border-radius: 10px; transition: color var(--dur-1) var(--ease);
+}
+.bnitem svg { width: 22px; height: 22px; }
+.bnitem.active { color: var(--text); }
+.bnitem.active svg { color: var(--mint); }
+
+/* ============================================================= *
+ *  Motion kit                                                  *
+ * ============================================================= */
+@keyframes cardSettle { from { opacity: 0; transform: translateY(9px); } to { opacity: 1; transform: none; } }
+.screen.active > * { animation: cardSettle var(--dur-3) var(--ease) both; }
+.screen.active > *:nth-child(2){ animation-delay: .06s; }
+.screen.active > *:nth-child(3){ animation-delay: .12s; }
+.screen.active > *:nth-child(4){ animation-delay: .18s; }
+
+.screen { display: none; }
+.screen.active { display: block; }
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora .blob { animation: none !important; }
+  .screen.active > * { animation: none !important; }
+  * { scroll-behavior: auto !important; }
+}
+
+/* ============================================================= *
+ *  Auth gate                                                   *
+ * ============================================================= */
+#gate {
+  position: fixed; inset: 0; z-index: 50; display: grid; place-items: center;
+  padding: 24px; background: var(--base);
+}
+.authcard { width: 100%; max-width: 380px; padding: 30px 26px; text-align: center; }
+.field {
+  width: 100%; padding: 13px 14px; margin-top: 14px;
+  background: var(--card-solid); color: var(--text);
+  border: 1px solid var(--hairline); border-radius: var(--r-ctrl);
+  font-family: var(--font-body); font-size: 15px; outline: none;
+  transition: border-color var(--dur-1) var(--ease);
+}
+.field:focus { border-color: var(--mint); }
+.btn {
+  width: 100%; padding: 13px 16px; margin-top: 14px; cursor: pointer;
+  border: none; border-radius: var(--r-ctrl);
+  font-family: var(--font-body); font-weight: 600; font-size: 15px;
+  background: var(--mint); color: #04120C;
+  transition: transform var(--dur-1) var(--ease), opacity var(--dur-1) var(--ease);
+}
+.btn:hover { opacity: .92; }
+.btn:active { transform: scale(.98); }
+.btn[disabled] { opacity: .5; cursor: default; }
+.muted { color: var(--text-dim); font-size: 13.5px; line-height: 1.55; }
+
+/* placeholder tiles for empty screens */
+.tile { padding: 22px; margin-bottom: 14px; }
+.tile h2 { font-size: 21px; margin: 0 0 4px; }
+.eyebrow { font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--mint); font-weight: 600; }
+.pending { display: inline-flex; align-items: center; gap: 6px; margin-top: 12px; font-size: 12.5px;
+           color: var(--text-faint); border: 1px dashed var(--hairline); padding: 5px 10px; border-radius: 999px; }
+.hpill { display:inline-block; padding:2px 9px; border-radius:999px; font-size:11.5px; font-weight:600; }
+</style>
+</head>
+<body>
+
+<!-- Aurora backdrop -->
+<div class="aurora" aria-hidden="true">
+  <div class="blob mint"></div>
+  <div class="blob violet"></div>
+  <div class="blob blue"></div>
+  <div class="contour"></div>
+</div>
+
+<!-- ============ Auth gate ============ -->
+<div id="gate">
+  <div class="authcard glass">
+    <div class="wordmark" style="font-size:24px; margin-bottom:6px;">Household<span class="accent">·</span>Planner</div>
+    <p class="muted" style="margin:0 0 6px;">Can we afford to start that project, given everything else going on?</p>
+    <form id="authForm">
+      <input id="email" class="field" type="email" inputmode="email" autocomplete="email"
+             placeholder="you@email.com" required />
+      <button id="authBtn" class="btn" type="submit">Send magic link</button>
+    </form>
+    <p id="authMsg" class="muted" style="margin-top:14px; min-height:20px;"></p>
+  </div>
+</div>
+
+<!-- ============ App ============ -->
+<div id="app" hidden>
+  <header class="appbar">
+    <div class="wordmark" style="flex:1;">Household<span class="accent">·</span>Planner</div>
+    <button class="iconbtn" id="themeBtn" title="Toggle theme"><i data-lucide="moon"></i></button>
+    <button class="iconbtn" id="gearBtn" title="Settings"><i data-lucide="settings"></i></button>
+    <button class="iconbtn" id="signoutBtn" title="Sign out"><i data-lucide="log-out"></i></button>
+  </header>
+
+  <div class="shell">
+    <!-- desktop sidebar -->
+    <nav class="sidebar" id="sidebar"></nav>
+
+    <main>
+      <!-- Forecast -->
+      <section class="screen active" data-screen="forecast">
+        <div class="tile glass">
+          <div class="eyebrow">Forecast</div>
+          <h2>The money view</h2>
+          <p class="muted">A 24-month rolling cashflow — income minus life expenses minus project spend, tracked against your buffer. The reason to open the app.</p>
+          <span class="pending"><i data-lucide="circle-dashed" style="width:14px;height:14px"></i> Chart, alerts &amp; monthly table — Session 4</span>
+        </div>
+        <div class="tile glass">
+          <div class="eyebrow" style="color:var(--violet)">Scenario</div>
+          <h2>Conservative · Realistic · Optimistic</h2>
+          <p class="muted">Same data, three confidence filters. Christine's partnership jump and the annual bonuses don't disappear — they're flagged by how sure we are.</p>
+        </div>
+      </section>
+
+      <!-- Projects -->
+      <section class="screen" data-screen="projects">
+        <div class="tile glass">
+          <div class="eyebrow">Projects</div>
+          <h2>The doing view</h2>
+          <p class="muted">Garage, shed, hallway floor, kitchen — each with cost, priority score, target start and duration. An affordability tick shows whether it fits the forecast.</p>
+          <span class="pending"><i data-lucide="circle-dashed" style="width:14px;height:14px"></i> Cards, line items &amp; budget lock — Session 3</span>
+        </div>
+      </section>
+
+      <!-- Finances -->
+      <section class="screen" data-screen="finances">
+        <div class="tile glass">
+          <div class="eyebrow">Finances</div>
+          <h2>The context</h2>
+          <p class="muted">Accounts, recurring flows, salary changes, bonuses, financing options and the life-events timeline — mat leave, PCP end, nursery start.</p>
+          <span class="pending"><i data-lucide="circle-dashed" style="width:14px;height:14px"></i> All five sections — Session 2</span>
+        </div>
+      </section>
+
+      <!-- Tasks -->
+      <section class="screen" data-screen="tasks">
+        <div class="tile glass">
+          <div class="eyebrow">Tasks</div>
+          <h2>What to do &amp; buy next</h2>
+          <p class="muted">Every project line item rolled up into one checklist, grouped by project. Filter to To&nbsp;do, Quoted, or Over&nbsp;budget.</p>
+          <span class="pending"><i data-lucide="circle-dashed" style="width:14px;height:14px"></i> Cross-project roll-up — Session 4</span>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- bottom nav (mobile) -->
+  <nav class="bottomnav" id="bottomnav"></nav>
+</div>
+
+<script type="module">
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+/* ---- Config (anon key is a public client key) ---- */
+const SUPABASE_URL = "https://dgbbyijhabjozqrkokrq.supabase.co";
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRnYmJ5aWpoYWJqb3pxcmtva3JxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkwMTA2ODgsImV4cCI6MjA5NDU4NjY4OH0.0VnZVRXNexVQBoYFrVXtGo9Ep-Gdv_04jGcX9NQLcE0";
+
+export const supa = createClient(SUPABASE_URL, SUPABASE_ANON);
+/* All planner data lives in the house_project schema — use this handle for reads/writes. */
+export const HP = supa.schema("house_project");
+window.__supa = supa; window.__HP = HP;  // handy for the console during dev
+
+/* ---- Nav definition ---- */
+const TABS = [
+  { id: "forecast", label: "Forecast", icon: "line-chart" },
+  { id: "projects", label: "Projects", icon: "hammer" },
+  { id: "finances", label: "Finances", icon: "wallet" },
+  { id: "tasks",    label: "Tasks",    icon: "list-checks" },
+];
+
+function buildNav() {
+  const side = document.getElementById("sidebar");
+  const bot  = document.getElementById("bottomnav");
+  side.innerHTML = ""; bot.innerHTML = "";
+  for (const t of TABS) {
+    const s = document.createElement("div");
+    s.className = "navitem" + (t.id === "forecast" ? " active" : "");
+    s.dataset.tab = t.id;
+    s.innerHTML = `<i data-lucide="${t.icon}"></i><span>${t.label}</span>`;
+    s.onclick = () => go(t.id);
+    side.appendChild(s);
+
+    const b = document.createElement("div");
+    b.className = "bnitem" + (t.id === "forecast" ? " active" : "");
+    b.dataset.tab = t.id;
+    b.innerHTML = `<i data-lucide="${t.icon}"></i><span>${t.label}</span>`;
+    b.onclick = () => go(t.id);
+    bot.appendChild(b);
+  }
+  lucide.createIcons();
+}
+
+function go(tab) {
+  document.querySelectorAll(".screen").forEach(s =>
+    s.classList.toggle("active", s.dataset.screen === tab));
+  document.querySelectorAll("[data-tab]").forEach(n =>
+    n.classList.toggle("active", n.dataset.tab === tab));
+  lucide.createIcons();
+}
+
+/* ---- Theme ---- */
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  document.querySelector('meta[name=theme-color]')
+    .setAttribute("content", theme === "dark" ? "#0A0D11" : "#F6F8F6");
+  const icon = theme === "dark" ? "moon" : "sun";
+  document.getElementById("themeBtn").innerHTML = `<i data-lucide="${icon}"></i>`;
+  localStorage.setItem("hp-theme", theme);
+  lucide.createIcons();
+}
+document.getElementById("themeBtn").onclick = () =>
+  applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+applyTheme(localStorage.getItem("hp-theme") || "dark");
+
+/* ---- Settings gear (placeholder until Session 4) ---- */
+document.getElementById("gearBtn").onclick = () =>
+  alert("Settings — cash buffer, priority weights, scenario default, integrations. Coming in Session 4.");
+
+/* ---- Auth ---- */
+const gate = document.getElementById("gate");
+const app  = document.getElementById("app");
+const authMsg = document.getElementById("authMsg");
+const authBtn = document.getElementById("authBtn");
+
+document.getElementById("authForm").onsubmit = async (e) => {
+  e.preventDefault();
+  const email = document.getElementById("email").value.trim();
+  if (!email) return;
+  authBtn.disabled = true; authMsg.textContent = "Sending…";
+  const { error } = await supa.auth.signInWithOtp({
+    email,
+    options: { emailRedirectTo: location.origin + location.pathname },
+  });
+  authBtn.disabled = false;
+  authMsg.textContent = error
+    ? "Couldn't send: " + error.message
+    : "Check your email for the magic link ✦";
+};
+
+document.getElementById("signoutBtn").onclick = async () => {
+  await supa.auth.signOut();
+};
+
+function showApp(session) {
+  if (session) {
+    gate.style.display = "none";
+    app.hidden = false;
+  } else {
+    gate.style.display = "grid";
+    app.hidden = true;
+  }
+}
+
+/* ---- Boot ---- */
+buildNav();
+const { data: { session } } = await supa.auth.getSession();
+showApp(session);
+supa.auth.onAuthStateChange((_evt, s) => showApp(s));
+</script>
+</body>
+</html>

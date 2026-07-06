@@ -1,0 +1,10 @@
+{
+  "name": "Household Planner",
+  "short_name": "Planner",
+  "description": "Can we afford to start that project, given everything else going on?",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0A0D11",
+  "theme_color": "#0A0D11",
+  "icons": []
+}
