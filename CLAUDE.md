@@ -225,6 +225,10 @@ Locked in Session 1. These are the non-obvious facts that will bite a fresh sess
 
 **Seed landmine.** The spec's placeholder "Christine → Partner uplift" `salary_changes` row is **not seeded** — `salary_changes.flow_id` is `NOT NULL` and we intentionally don't seed a fake salary flow. The Salary changes section shows an empty-state hint instead; the row becomes creatable once a real income flow exists.
 
+**PostgREST bulk-insert union-NULL landmine (verified live, Session 3).** A multi-row `insert([...])` sends the **union of keys across all rows**; any row missing a key is sent `NULL`, *not* the column default. Bit the `life_events` seed — only the `decision_point` row carried `resolved`, so the other two were sent `resolved = null` and the whole batch was rejected (`resolved` is `NOT NULL`), seeding zero life events. Fix: every row in a batch must carry the same keys with non-null values for NOT-NULL columns. Applies to any future multi-row seed/insert.
+
+**Priority is being reduced to one number (pending, not yet built).** The user wants priority to be **a single manually-set field**, not the current derived `impact/urgency/effort/cost` + `priority_weights` score, and not the three 1–5 controls in the project sheet. This also removes the planned Settings weight-sliders from Session 4 scope. Deferred — the exact form (1–5 / 1–10 / drag-to-rank) is undecided ("we'll work it out"). Do not rebuild the priority model until the user decides.
+
 ---
 
 ## The Cashflow Engine
