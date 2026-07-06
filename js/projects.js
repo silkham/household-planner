@@ -42,19 +42,9 @@ const projectCost = (p) => {
   return its.length ? sumEst(its) : (Number(p.estimated_cost) || 0);
 };
 
-// ---- priority score (client-side, from settings.priority_weights) ----------
-const DEFAULT_WEIGHTS = { impact: 0.35, urgency: 0.30, effort: 0.15, cost: 0.20 };
-function priorityScore(p, maxCost) {
-  const w = (state.settings && state.settings.priority_weights) || DEFAULT_WEIGHTS;
-  const cost = projectCost(p);
-  const costScore = maxCost > 0 ? 1 - cost / maxCost : 1; // cheaper = better
-  const raw =
-    (w.impact || 0) * ((Number(p.impact) || 3) / 5) +
-    (w.urgency || 0) * ((Number(p.urgency) || 3) / 5) +
-    (w.effort || 0) * ((Number(p.effort) || 3) / 5) +
-    (w.cost || 0) * costScore;
-  return Math.round(raw * 100);
-}
+// ---- priority: a single manually-set 1–5 field -----------------------------
+// (Replaced the derived impact/urgency/effort × weights score in Session 4.)
+const priorityOf = (p) => Number(p.priority) || 3;
 
 // ---- live forecast (one pass per render, reused for every card) ------------
 function currentForecast() {
@@ -95,9 +85,7 @@ function projectFields(p) {
     { key: "name", label: "Name", type: "text", placeholder: "Kitchen reno" },
     { key: "category", label: "Category", type: "select", options: CATEGORIES },
     { key: "status", label: "Status", type: "select", options: STATUSES },
-    { key: "impact", label: "Impact (1–5)", type: "segmented", options: RATING },
-    { key: "urgency", label: "Urgency (1–5)", type: "segmented", options: RATING },
-    { key: "effort", label: "Effort (1–5, higher = easier)", type: "segmented", options: RATING },
+    { key: "priority", label: "Priority (1 = low, 5 = must-do)", type: "segmented", options: RATING },
     { key: "target_start_month", label: "Target start", type: "month" },
     { key: "duration_months", label: "Duration (months)", type: "number", min: 1, step: "1" },
   ];
@@ -110,7 +98,7 @@ function projectFields(p) {
 function editProject(record) {
   const isNew = !record.id;
   const p = isNew
-    ? { name: "", category: "Structural", status: "Planned", impact: 3, urgency: 3, effort: 3,
+    ? { name: "", category: "Structural", status: "Planned", priority: 3,
         estimated_cost: 0, target_start_month: null, duration_months: 1, budget_status: "estimate", notes: null }
     : record;
 
@@ -290,8 +278,8 @@ function durationBar(p) {
   return `<div class="dur-bar" title="${dur} month${dur > 1 ? "s" : ""}">${cells}</div>`;
 }
 
-function projectCard(p, forecast, maxCost) {
-  const score = priorityScore(p, maxCost);
+function projectCard(p, forecast) {
+  const score = priorityOf(p);
   const cost = projectCost(p);
   const aff = AFFORD[projectAffordability({ ...p, estimated_cost: cost }, forecast)];
   const itemCount = itemsFor(p.id).length;
@@ -301,7 +289,7 @@ function projectCard(p, forecast, maxCost) {
     <div class="pc-tick" title="${aff.label}"><i data-lucide="${aff.icon}" style="color:var(--${aff.tint})"></i></div>
     <div class="fc-main">
       <div class="pc-top"><span class="fc-name">${p.name}</span>
-        <span class="pc-score" title="Priority score">${score}</span></div>
+        <span class="pc-score" title="Priority (1–5)">P${score}</span></div>
       <div class="fc-sub">${badge(p.status, STATUS_TINT[p.status] || "blue")}
         ${p.category ? badge(p.category, "blue") : ""} ${budget}
         <span class="fc-dim">${fmtMonth(p.target_start_month)}</span>
@@ -312,9 +300,9 @@ function projectCard(p, forecast, maxCost) {
   </div>`;
 }
 
-function sortProjects(list, maxCost) {
+function sortProjects(list) {
   const arr = [...list];
-  if (sortMode === "priority") arr.sort((a, b) => priorityScore(b, maxCost) - priorityScore(a, maxCost));
+  if (sortMode === "priority") arr.sort((a, b) => priorityOf(b) - priorityOf(a));
   else if (sortMode === "cost") arr.sort((a, b) => projectCost(b) - projectCost(a));
   else if (sortMode === "date") arr.sort((a, b) =>
     (a.target_start_month || "9999") < (b.target_start_month || "9999") ? -1 : 1);
@@ -326,15 +314,14 @@ function render() {
   const root = document.getElementById("projects-root");
   if (!root) return;
   const forecast = currentForecast();
-  const maxCost = state.projects.reduce((m, p) => Math.max(m, projectCost(p)), 0);
-  const sorted = sortProjects(state.projects, maxCost);
+  const sorted = sortProjects(state.projects);
 
   const sortCtrl = `<div class="segmented p-sort">${
     SORTS.map((s) => `<button class="seg${s.id === sortMode ? " on" : ""}" data-sort="${s.id}">${s.label}</button>`).join("")
   }</div>`;
 
   const body = sorted.length
-    ? sorted.map((p) => projectCard(p, forecast, maxCost)).join("")
+    ? sorted.map((p) => projectCard(p, forecast)).join("")
     : `<div class="sec-empty">No projects yet. Add the garage, shed, hallway floor, kitchen…</div>`;
 
   root.innerHTML = `

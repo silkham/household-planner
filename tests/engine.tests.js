@@ -119,6 +119,32 @@ const matLeave = computeForecast({
 approx(matLeave.months[0].income, 2000, "before mat leave: full salary");
 approx(matLeave.months[1].income, 600, "during mat leave: salary − 1400");
 approx(matLeave.months[2].income, 2000, "after 1-month duration: back to full");
+// ---- life events LINKED to a salary flow (linked_flow_id) ------------------
+// mat leave linked to Christine's salary: statutory drop of −1400 for 2 months.
+// Effect folds through the flow, and the event is NOT double-counted as a
+// separate net delta. linkedFlowDelta signs by the flow's kind.
+const linkedMat = computeForecast({
+  settings: { horizon_months: 3, cash_buffer: 0 }, startMonth: "2026-01",
+  accounts: [{ balance: 0, available_for_projects: true }],
+  recurring_flows: [{ id: "chris", kind: "income", amount: 3000, start_month: "2026-01" }],
+  life_events: [{ event_type: "income_change", monthly_impact: -1400, effective_month: "2026-02",
+                  duration_months: 2, linked_flow_id: "chris", name: "Mat leave 2" }],
+});
+approx(linkedMat.months[0].income, 3000, "linked mat leave: full salary before");
+approx(linkedMat.months[1].income, 1600, "linked mat leave: salary drops via flow (not doubled)");
+approx(linkedMat.months[2].income, 1600, "linked mat leave: still reduced in month 2");
+eq(linkedMat.months[1].breakdown.income.length, 1, "linked event does not add a second income line");
+// linkedFlowDelta directly: income flow keeps sign, expense flow flips it
+approx(linkedFlowDelta({ id: "chris", kind: "income" }, monthIndex("2026-02"),
+  [{ event_type: "income_change", monthly_impact: -1400, effective_month: "2026-02", duration_months: 2, linked_flow_id: "chris" }]),
+  -1400, "linkedFlowDelta income keeps sign");
+approx(linkedFlowDelta({ id: "m", kind: "expense" }, monthIndex("2026-02"),
+  [{ event_type: "expense_change", monthly_impact: -200, effective_month: "2026-02", duration_months: 2, linked_flow_id: "m" }]),
+  200, "linkedFlowDelta expense flips sign (−impact → +expense)");
+eq(linkedFlowDelta({ id: "chris", kind: "income" }, monthIndex("2026-01"),
+  [{ event_type: "income_change", monthly_impact: -1400, effective_month: "2026-02", duration_months: 2, linked_flow_id: "chris" }]),
+  0, "linkedFlowDelta 0 before the event starts");
+
 // lump sum only in its month
 const lump = computeForecast({
   settings: { horizon_months: 2, cash_buffer: 0 }, startMonth: "2026-01",

@@ -131,6 +131,29 @@ const lifeEventActive = (e, mIdx) => {
   return true;
 };
 
+// A life event may be LINKED to a specific recurring_flow (linked_flow_id) —
+// e.g. "mat leave: Christine's salary drops to £X for 9 months". When linked,
+// the event acts THROUGH that flow (see linkedFlowDelta) and is excluded from
+// the standalone net-delta paths below, so it is never counted twice.
+const isLinkedFlowEvent = (e) =>
+  !!e.linked_flow_id &&
+  (e.event_type === "income_change" || e.event_type === "expense_change");
+
+// Signed delta a flow's effective amount should receive in `mIdx` from any
+// active life events linked to it. The stored monthly_impact follows the app's
+// "− = worse for net" convention; the flow's kind sets the sign so net always
+// moves the right way: income += impact, expense −= impact.
+export function linkedFlowDelta(flow, mIdx, lifeEvents) {
+  let delta = 0;
+  for (const e of lifeEvents || []) {
+    if (!isLinkedFlowEvent(e) || e.linked_flow_id !== flow.id) continue;
+    if (!lifeEventActive(e, mIdx)) continue;
+    const impact = Number(e.monthly_impact) || 0;
+    delta += flow.kind === "expense" ? -impact : impact;
+  }
+  return delta;
+}
+
 // ---- the forecast ----------------------------------------------------------
 export function computeForecast(input) {
   const {
@@ -161,7 +184,8 @@ export function computeForecast(input) {
     let income = 0;
     for (const f of recurring_flows) {
       if (f.kind !== "income" || !activeInMonth(f.start_month, f.end_month, mIdx)) continue;
-      const amt = effectiveAmount(f, mIdx, salary_changes, scenario);
+      const amt = effectiveAmount(f, mIdx, salary_changes, scenario)
+        + linkedFlowDelta(f, mIdx, life_events);
       income += amt;
       bd.income.push({ name: f.name, amount: amt, source: "salary" });
     }
@@ -179,6 +203,7 @@ export function computeForecast(input) {
       }
     }
     for (const e of life_events) {
+      if (isLinkedFlowEvent(e)) continue; // applied through its linked flow above
       if (!lifeEventActive(e, mIdx)) continue;
       if (e.event_type === "income_change") {
         const amt = Number(e.monthly_impact) || 0;
@@ -195,7 +220,8 @@ export function computeForecast(input) {
     let expenses = 0;
     for (const f of recurring_flows) {
       if (f.kind !== "expense" || !activeInMonth(f.start_month, f.end_month, mIdx)) continue;
-      const amt = effectiveAmount(f, mIdx, salary_changes, scenario);
+      const amt = effectiveAmount(f, mIdx, salary_changes, scenario)
+        + linkedFlowDelta(f, mIdx, life_events);
       expenses += amt;
       bd.expenses.push({ name: f.name, amount: amt, source: "recurring" });
     }
@@ -208,6 +234,7 @@ export function computeForecast(input) {
       }
     }
     for (const e of life_events) {
+      if (isLinkedFlowEvent(e)) continue; // applied through its linked flow above
       if (e.event_type !== "expense_change" || !lifeEventActive(e, mIdx)) continue;
       const amt = -(Number(e.monthly_impact) || 0); // −impact: worse (−) → more expense
       expenses += amt;

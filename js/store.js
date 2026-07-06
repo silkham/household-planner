@@ -140,16 +140,16 @@ export async function seedIfEmpty() {
     const { data: projRows, error: pErr } = await HP.from("projects").insert([
       { ...H, name: "Garage finish (utility + storage)", category: "Structural", status: "In Progress",
         estimated_cost: 1500, target_start_month: "2026-07", duration_months: 2,
-        impact: 3, urgency: 3, effort: 3, budget_status: "estimate", notes: "TBC — placeholder" },
+        priority: 4, budget_status: "estimate", notes: "TBC — placeholder" },
       { ...H, name: "Shed + concrete base", category: "Garden", status: "Planned",
         estimated_cost: 5500, target_start_month: "2026-08", duration_months: 2,
-        impact: 3, urgency: 3, effort: 3, budget_status: "estimate", notes: "TBC — placeholder" },
+        priority: 3, budget_status: "estimate", notes: "TBC — placeholder" },
       { ...H, name: "Hallway flooring", category: "Cosmetic", status: "Planned",
         estimated_cost: 2000, target_start_month: "2026-09", duration_months: 1,
-        impact: 3, urgency: 3, effort: 3, budget_status: "estimate", notes: "TBC — placeholder" },
+        priority: 2, budget_status: "estimate", notes: "TBC — placeholder" },
       { ...H, name: "Full kitchen reno", category: "Structural", status: "Quoted",
         estimated_cost: 45000, target_start_month: "2027-02", duration_months: 4,
-        impact: 4, urgency: 3, effort: 2, budget_status: "estimate", notes: "TBC — cost from NatWest loan work" },
+        priority: 5, budget_status: "estimate", notes: "TBC — cost from NatWest loan work" },
     ]).select();
     if (pErr) console.error("seed projects:", pErr.message);
 
