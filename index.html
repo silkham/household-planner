@@ -313,6 +313,60 @@ main { flex: 1; padding: 20px 18px 108px; }
 }
 
 /* ============================================================= *
+ *  Projects tab                                                 *
+ * ============================================================= */
+.p-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.sec-sub { margin: 3px 0 0; color: var(--text-faint); font-size: 12.5px; line-height: 1.45; }
+.p-sort { max-width: 340px; margin-bottom: 14px; }
+.p-list { display: flex; flex-direction: column; gap: 10px; }
+.pcard { align-items: flex-start; gap: 12px; }
+.pc-tick { flex: none; padding-top: 2px; }
+.pc-tick svg { width: 22px; height: 22px; }
+.pc-top { display: flex; align-items: center; gap: 8px; }
+.pc-score {
+  flex: none; font-family: var(--font-head); font-weight: 500; font-size: 12.5px;
+  min-width: 26px; height: 22px; padding: 0 7px; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 999px; background: color-mix(in srgb, var(--violet) 16%, transparent); color: var(--violet);
+}
+.dur-bar { display: flex; gap: 3px; margin-top: 8px; }
+.dur-bar span { width: 16px; height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--blue) 40%, var(--hairline)); }
+@media (min-width: 860px) { .p-list { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } }
+
+/* detail sheet extras */
+.sheet-extra { display: flex; flex-direction: column; margin-top: 6px; }
+.pi-head { display: flex; align-items: baseline; justify-content: space-between; margin: 14px 0 8px; }
+.pi-total { font-family: var(--font-head); font-weight: 500; font-size: 14px; color: var(--text-dim); }
+.li-list { display: flex; flex-direction: column; gap: 6px; }
+.li { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      padding: 10px 12px; border: 1px solid var(--hairline); border-radius: var(--r-ctrl);
+      background: var(--card); cursor: pointer; }
+.li:hover { border-color: color-mix(in srgb, var(--mint) 40%, var(--hairline)); }
+.li-name { font-weight: 600; font-size: 13.5px; }
+.li-sub { display: block; margin-top: 4px; }
+.li-nums { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; }
+.li-est { font-family: var(--font-head); font-weight: 500; font-size: 14px; }
+.li-act { font-size: 12.5px; }
+.pi-add, .pi-btn {
+  margin-top: 10px; width: 100%; padding: 10px; border-radius: var(--r-ctrl); cursor: pointer;
+  border: 1px dashed var(--hairline); background: none; color: var(--mint);
+  font-family: var(--font-body); font-weight: 600; font-size: 13.5px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+}
+.pi-add svg, .pi-btn svg { width: 16px; height: 16px; }
+.pi-btn { border-style: solid; }
+.pi-btn[disabled] { opacity: .55; cursor: not-allowed; }
+.pi-btn.locked { color: var(--mint); border-color: color-mix(in srgb, var(--mint) 45%, var(--hairline));
+                 background: color-mix(in srgb, var(--mint) 10%, transparent); }
+.pi-var { margin-top: 14px; }
+.pi-var-top { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; }
+.pi-bar { height: 7px; border-radius: 4px; background: var(--hairline); overflow: hidden; }
+.pi-bar span { display: block; height: 100%; transform-origin: left; transition: transform var(--dur-2) var(--ease); }
+.sp-list { display: flex; flex-direction: column; gap: 6px; }
+.sp-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.sp-row span { font-size: 13px; color: var(--text-dim); }
+.sp-in { max-width: 140px; text-align: right; }
+
+/* ============================================================= *
  *  Bottom sheet + form controls                                *
  * ============================================================= */
 .sheet-overlay {
@@ -428,12 +482,7 @@ select.field { appearance: none; background-image:
 
       <!-- Projects -->
       <section class="screen" data-screen="projects">
-        <div class="tile glass">
-          <div class="eyebrow">Projects</div>
-          <h2>The doing view</h2>
-          <p class="muted">Garage, shed, hallway floor, kitchen — each with cost, priority score, target start and duration. An affordability tick shows whether it fits the forecast.</p>
-          <span class="pending"><i data-lucide="circle-dashed" style="width:14px;height:14px"></i> Cards, line items &amp; budget lock — Session 3</span>
-        </div>
+        <div id="projects-root"></div>
       </section>
 
       <!-- Finances -->

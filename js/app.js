@@ -3,6 +3,7 @@
 // ============================================================================
 import { supa, resolveHousehold, loadAll, seedIfEmpty } from "./store.js";
 import { mountFinances } from "./finances.js";
+import { mountProjects } from "./projects.js";
 
 /* ---- Nav ---- */
 const TABS = [
@@ -85,6 +86,7 @@ async function onSession(session) {
       await loadAll();      // pull whatever exists
       await seedIfEmpty();  // idempotent placeholders on first open
       mountFinances();
+      mountProjects();
     }
   } else {
     gate.style.display = "grid";

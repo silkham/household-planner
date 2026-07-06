@@ -61,7 +61,8 @@ function renderField(f, draft, onChange) {
       input.value = cur == null || cur === "" ? "" : +(cur * scale).toFixed(6);
       input.oninput = () => {
         const raw = input.value;
-        setVal(raw === "" ? (f.type === "percent" ? null : 0) : Number(raw) / scale);
+        const emptyVal = f.type === "percent" || f.emptyNull ? null : 0;
+        setVal(raw === "" ? emptyVal : Number(raw) / scale);
       };
       break;
     }
@@ -175,6 +176,13 @@ export function openSheet(cfg) {
         refreshImpact();
       });
       body.appendChild(node);
+    }
+    // optional custom content (e.g. line items, budget lock, variance).
+    // The callback owns its container and manages its own internal re-renders.
+    if (cfg.extra) {
+      const ex = el("div", "sheet-extra");
+      cfg.extra(ex, draft);
+      body.appendChild(ex);
     }
     if (isEdit) {
       const del = el("button", "sheet-delete", "Delete");

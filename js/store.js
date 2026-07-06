@@ -124,9 +124,46 @@ export async function seedIfEmpty() {
   // salary_changes.flow_id is NOT NULL and we intentionally don't seed a fake
   // salary flow. The Salary changes section shows a hint to add it manually.
 
+  let didSeed = inserts.length > 0;
   if (inserts.length) {
     const results = await Promise.all(inserts);
     results.forEach((r) => { if (r.error) console.error("seed:", r.error.message); });
-    await loadAll();
   }
+
+  // Projects need id resolution (kitchen line items FK the kitchen row), so
+  // they seed sequentially rather than in the parallel batch above.
+  if (state.projects.length === 0) {
+    didSeed = true;
+    const { data: projRows, error: pErr } = await HP.from("projects").insert([
+      { ...H, name: "Garage finish (utility + storage)", category: "Structural", status: "In Progress",
+        estimated_cost: 1500, target_start_month: "2026-07", duration_months: 2,
+        impact: 3, urgency: 3, effort: 3, budget_status: "estimate", notes: "TBC — placeholder" },
+      { ...H, name: "Shed + concrete base", category: "Garden", status: "Planned",
+        estimated_cost: 5500, target_start_month: "2026-08", duration_months: 2,
+        impact: 3, urgency: 3, effort: 3, budget_status: "estimate", notes: "TBC — placeholder" },
+      { ...H, name: "Hallway flooring", category: "Cosmetic", status: "Planned",
+        estimated_cost: 2000, target_start_month: "2026-09", duration_months: 1,
+        impact: 3, urgency: 3, effort: 3, budget_status: "estimate", notes: "TBC — placeholder" },
+      { ...H, name: "Full kitchen reno", category: "Structural", status: "Quoted",
+        estimated_cost: 45000, target_start_month: "2027-02", duration_months: 4,
+        impact: 4, urgency: 3, effort: 2, budget_status: "estimate", notes: "TBC — cost from NatWest loan work" },
+    ]).select();
+    if (pErr) console.error("seed projects:", pErr.message);
+
+    const kitchen = (projRows || []).find((p) => p.name === "Full kitchen reno");
+    if (kitchen) {
+      // seed the kitchen with line items so sum→total behaviour shows on first open
+      const items = [
+        ["Units & worktops", 18000], ["Appliances", 6000], ["Install labour", 9000],
+        ["Electrics & plumbing", 7000], ["Flooring & tiling", 5000],
+      ].map(([name, cost], i) => ({
+        ...H, project_id: kitchen.id, name, estimated_cost: cost,
+        actual_cost: null, status: "quoted", sort_order: i, notes: "TBC",
+      }));
+      const { error: iErr } = await HP.from("project_items").insert(items);
+      if (iErr) console.error("seed kitchen items:", iErr.message);
+    }
+  }
+
+  if (didSeed) await loadAll();
 }
