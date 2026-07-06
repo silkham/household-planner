@@ -107,10 +107,13 @@ export async function seedIfEmpty() {
   }
 
   if (state.life_events.length === 0) {
+    // NOTE: PostgREST bulk insert uses the UNION of keys across rows — any row
+    // missing a key is sent NULL (not the column default). `resolved` is NOT
+    // NULL, so every row must carry it explicitly or the whole batch fails.
     inserts.push(HP.from("life_events").insert([
-      { ...H, name: "Christine mat leave 2", event_type: "income_change",  duration_months: 9, monthly_impact: 0, notes: "TBC" },
-      { ...H, name: "Nursery starts",        event_type: "expense_change", monthly_impact: 0, notes: "TBC" },
-      { ...H, name: "PCP ends on 2nd car",   event_type: "decision_point", resolved: false, notes: "TBC — options: keep + buy out / new PCP / lease / drop to one car" },
+      { ...H, name: "Christine mat leave 2", event_type: "income_change",  duration_months: 9, monthly_impact: 0, resolved: false, notes: "TBC" },
+      { ...H, name: "Nursery starts",        event_type: "expense_change", duration_months: null, monthly_impact: 0, resolved: false, notes: "TBC" },
+      { ...H, name: "PCP ends on 2nd car",   event_type: "decision_point", duration_months: null, monthly_impact: 0, resolved: false, notes: "TBC — options: keep + buy out / new PCP / lease / drop to one car" },
     ]));
   }
 
