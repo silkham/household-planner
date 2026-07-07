@@ -208,6 +208,16 @@ const green = computeForecast({
 });
 eq(projectAffordability({ id: "g", name: "G", estimated_cost: 100, duration_months: 1, target_start_month: "2026-01", status: "Planned" }, green), "green", "affordability green when comfortable");
 
+// ---- General Expenses budget is a flat monthly forecast expense ------------
+const gb = computeForecast({
+  settings: { horizon_months: 2, cash_buffer: 0, forecast_budgets: { "General Expenses": 1500 } },
+  startMonth: "2026-01",
+  accounts: [{ balance: 10000, available_for_projects: true }],
+});
+eq(gb.months[0].expenses, 1500, "general budget counts as a monthly expense");
+eq(gb.months[1].cash, 10000 - 1500 * 2, "general budget compounds down the cash line");
+has(gb.months[0].breakdown.expenses.map((x) => x.name), "General expenses", "budget shows in the breakdown");
+
 // ---- summary ---------------------------------------------------------------
 log("");
 log(`${PASS} passed, ${FAIL} failed`);

@@ -4,7 +4,7 @@
 //  alert strip, and an expandable monthly table with per-month breakdown.
 //  All numbers come from the engine via store.currentForecast().
 // ============================================================================
-import { state, subscribe, saveSettings, currentForecast } from "./store.js";
+import { state, subscribe, currentForecast } from "./store.js";
 import { fmtGBP, fmtMonth } from "./sheet.js";
 import { fetchEmma } from "./emma.js";
 import { reconcileMonth } from "./reconcile.js";
@@ -18,12 +18,6 @@ const shortMonth = (ym) => {
   return `${MON[(+m || 1) - 1]} '${y.slice(2)}`;
 };
 const signed = (n) => (n < 0 ? "−" : "+") + fmtGBP(Math.abs(n));
-
-const SCENARIOS = [
-  { id: "conservative", label: "Conservative" },
-  { id: "realistic",    label: "Realistic" },
-  { id: "optimistic",   label: "Optimistic" },
-];
 
 // ---------------------------------------------------------------------------
 //  SVG chart — cash position over the horizon
@@ -83,12 +77,16 @@ function buildChart(fc) {
   let low = 0;
   ms.forEach((m, i) => { if (m.cash < ms[low].cash) low = i; });
   const lx = x(low), ly = y(ms[low].cash);
-  const labelLeft = lx > W - 120;
+  // Put the label BELOW the low point (inside the area fill, clear of the line
+  // which only rises away from the minimum); flip above only if it'd hit the
+  // x-axis. Centre + clamp horizontally so it never runs off the edge.
+  const belowY = ly + 17;
+  const lblY = belowY < bottom - 2 ? belowY : ly - 11;
+  const lblX = Math.max(padL + 34, Math.min(W - padR - 34, lx));
   const low_ = `
     <circle cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" r="7" fill="none"
       stroke="var(--${ms[low].cash < fc.buffer ? "coral" : "mint"})" stroke-width="1.5" opacity=".9"/>
-    <text x="${(labelLeft ? lx - 11 : lx + 11).toFixed(1)}" y="${(ly - 9).toFixed(1)}"
-      text-anchor="${labelLeft ? "end" : "start"}" class="ax-lbl low">
+    <text x="${lblX.toFixed(1)}" y="${lblY.toFixed(1)}" text-anchor="middle" class="ax-lbl low">
       low ${fmtGBP(ms[low].cash)} · ${shortMonth(ms[low].month)}</text>`;
 
   return `<svg class="cf-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img"
@@ -327,17 +325,12 @@ function render() {
   const root = document.getElementById("forecast-root");
   if (!root) return;
   const fc = currentForecast();
-  const scenario = fc.scenario;
-
-  const segs = SCENARIOS.map((s) =>
-    `<button class="seg${s.id === scenario ? " on" : ""}" data-scenario="${s.id}">${s.label}</button>`).join("");
 
   root.innerHTML = `
     <div class="cf-top">
       <div><div class="eyebrow">Forecast</div>
         <p class="sec-sub">Cash position over ${fc.months.length} months · opening ${fmtGBP(fc.opening_cash)}. Red dashes are your buffer.</p></div>
     </div>
-    <div class="segmented cf-scenario">${segs}</div>
     <div class="cf-card glass">${buildChart(fc)}</div>
     ${buildAlerts(fc)}
     ${buildReconcile()}
@@ -345,14 +338,6 @@ function render() {
     <div class="cf-table">${fc.months.map(monthRow).join("")}</div>`;
 
   wireReconcile(root);
-
-  // scenario switch — persists to settings.forecast_confidence (subscribers re-render)
-  root.querySelectorAll("[data-scenario]").forEach((b) =>
-    b.onclick = async () => {
-      if (b.dataset.scenario === scenario) return;
-      try { await saveSettings({ forecast_confidence: b.dataset.scenario }); }
-      catch (e) { alert("Couldn't switch scenario: " + e.message); }
-    });
 
   root.querySelectorAll("[data-toggle]").forEach((b) =>
     b.onclick = () => {

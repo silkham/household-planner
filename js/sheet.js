@@ -15,6 +15,20 @@ export const fmtMonth = (ym) => {
   return `${MONTHS[(+m || 1) - 1]} ${y}`;
 };
 
+// Month options as 'YYYY-MM' strings, from 24 months back to 48 ahead — a
+// native <input type="month"> renders as a plain text box in Safari/WebKit, so
+// we use a select everywhere for a consistent picker.
+function monthOptions(current) {
+  const now = new Date();
+  const opts = [];
+  for (let i = -24; i <= 48; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+    opts.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  }
+  if (current && !opts.includes(current)) opts.unshift(current);
+  return opts;
+}
+
 let host = null;
 function ensureHost() {
   if (host) return host;
@@ -67,12 +81,14 @@ function renderField(f, draft, onChange) {
       break;
     }
 
-    case "month":
-      input = el("input", "field");
-      input.type = "month";
+    case "month": {
+      input = el("select", "field");
+      input.appendChild(new Option("—", ""));
+      for (const v of monthOptions(draft[f.key])) input.appendChild(new Option(fmtMonth(v), v));
       input.value = draft[f.key] ?? "";
-      input.oninput = () => setVal(input.value || null);
+      input.onchange = () => setVal(input.value || null);
       break;
+    }
 
     case "select": {
       input = el("select", "field");

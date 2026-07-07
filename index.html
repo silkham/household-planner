@@ -329,6 +329,13 @@ main { flex: 1; padding: 20px 18px 108px; }
 .fc-sub { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 5px; }
 .fc-dim { color: var(--text-faint); font-size: 12px; }
 .fc-amt { font-family: var(--font-head); font-weight: 500; font-size: 16px; white-space: nowrap; }
+/* compact row (recurring flows) — dense single line */
+.fcard.compact { padding: 8px 13px; gap: 8px; }
+.fcard.compact .fc-name { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fcard.compact .fc-catmini { font-size: 11px; color: var(--text-faint); white-space: nowrap; }
+.fcard.compact .fc-meta { font-size: 11px; color: var(--text-faint); white-space: nowrap; }
+.fcard.compact .fc-amt { font-size: 14.5px; }
 .fc-nudge { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--amber); }
 .fc-nudge svg { width: 12px; height: 12px; }
 .fc-cta {

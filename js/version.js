@@ -5,5 +5,5 @@
 //  can confirm which deployed build the browser actually loaded.
 //    major.minor.patch — minor tracks a shipped phase, patch a fix/tweak.
 // ============================================================================
-export const APP_VERSION = "1.6.0";   // 1.6 = category merge/delete tool + multi-field rule matching
+export const APP_VERSION = "1.7.0";   // 1.7 = General budget in forecast + month selectors, compact recurring, chart/scenario tidy
 export const BUILD_DATE  = "2026-07-08";

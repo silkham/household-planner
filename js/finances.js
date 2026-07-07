@@ -207,14 +207,15 @@ function accountCard(a) {
 
 function flowCard(f) {
   const tint = f.kind === "income" ? "mint" : "coral";
-  const up = f.annual_uplift_pct ? badge(`+${(f.annual_uplift_pct * 100).toFixed(1)}%/yr`, "violet") : "";
+  const meta = [];
+  if (f.end_month) meta.push(`→ ${fmtMonth(f.end_month)}`);
+  if (f.annual_uplift_pct) meta.push(`+${(f.annual_uplift_pct * 100).toFixed(1)}%/yr`);
   return card(f, "recurring_flows", `
-    <div class="fc-main">
-      <div class="fc-name">${f.name}</div>
-      <div class="fc-sub">${badge(f.category || "Other", "blue")} ${up}
-        <span class="fc-dim">from ${fmtMonth(f.start_month)}${f.end_month ? " → " + fmtMonth(f.end_month) : ""}</span></div>
-    </div>
-    <span class="fc-amt" style="color:var(--${tint})">${f.kind === "income" ? "+" : "−"}${fmtGBP(f.amount)}</span>`);
+    <span class="fc-name">${f.name}</span>
+    <span class="fc-catmini">${f.category || "Other"}</span>
+    ${meta.length ? `<span class="fc-meta">${meta.join(" · ")}</span>` : ""}
+    <span class="fc-amt" style="color:var(--${tint})">${f.kind === "income" ? "+" : "−"}${fmtGBP(f.amount)}</span>`,
+    "compact");
 }
 
 function salaryChangeCard(sc) {

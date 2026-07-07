@@ -165,6 +165,10 @@ export function computeForecast(input) {
 
   const horizon = Number(settings.horizon_months) || 24;
   const buffer = Number(settings.cash_buffer) || 0;
+  // Discretionary "General Expenses" budget — a flat monthly outgoing in the
+  // forecast (the known recurring flows only cover fixed bills, so without this
+  // the forecast is over-optimistic). Reconciliation compares it to actual.
+  const generalBudget = Number((settings.forecast_budgets || {})["General Expenses"]) || 0;
   const start = monthIndex(startMonth);
 
   const opening = accounts
@@ -224,6 +228,10 @@ export function computeForecast(input) {
         + linkedFlowDelta(f, mIdx, life_events);
       expenses += amt;
       bd.expenses.push({ name: f.name, amount: amt, source: "recurring" });
+    }
+    if (generalBudget > 0) {
+      expenses += generalBudget;
+      bd.expenses.push({ name: "General expenses", amount: generalBudget, source: "budget" });
     }
     for (const f of activeLoans) {
       const sIdx = monthIndex(f.start_month);
