@@ -550,6 +550,47 @@ main { flex: 1; padding: 20px 18px 108px; }
   border: none; cursor: pointer; background: var(--violet); color: #fff;
   font-family: var(--font-body); font-weight: 600; font-size: 13px; white-space: nowrap; }
 .cat-addbtn svg { width: 14px; height: 14px; }
+.cat-group { flex: 0 0 108px; font-size: 12.5px; padding: 6px 9px; }
+.cat-budget { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin-top: 10px;
+  padding: 11px 13px; border: 1px dashed color-mix(in srgb, var(--violet) 45%, var(--hairline));
+  border-radius: var(--r-ctrl); background: color-mix(in srgb, var(--violet) 5%, transparent); }
+.cat-blabel { font-size: 13px; font-weight: 600; }
+.cat-budget .field { flex: 0 0 120px; }
+.cat-bhint { font-size: 11.5px; color: var(--text-faint); }
+
+/* ---- this-month reconciliation (current-month phase) ---- */
+.rc-card { padding: 15px 15px 12px; margin-bottom: 14px; }
+.rc-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.rc-body { display: flex; flex-direction: column; gap: 8px; }
+.rc-grp { border: 1px solid var(--hairline); border-radius: var(--r-ctrl); background: var(--card); overflow: hidden; }
+.rc-ghead { width: 100%; display: flex; align-items: center; gap: 10px;
+  padding: 11px 13px; background: none; border: none; cursor: pointer; color: var(--text); text-align: left; }
+.rc-gname { flex: 1; min-width: 0; font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rc-gnums, .rc-nums { font-size: 13px; color: var(--text-faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rc-bar { height: 5px; margin: 0 13px 10px; border-radius: 999px; background: var(--hairline); overflow: hidden; }
+.rc-bar > span { display: block; height: 100%; border-radius: 999px; transition: width var(--dur-2) var(--ease); }
+.rc-chev { width: 15px; height: 15px; color: var(--text-faint); flex: none; }
+.rc-tag { font-size: 10px; letter-spacing: .04em; text-transform: uppercase; font-weight: 700;
+  padding: 2px 7px; border-radius: 999px; white-space: nowrap; flex: none; }
+.rc-tag.mint { color: var(--mint); background: color-mix(in srgb, var(--mint) 15%, transparent); }
+.rc-tag.amber { color: var(--amber); background: color-mix(in srgb, var(--amber) 16%, transparent); }
+.rc-tag.coral { color: var(--coral); background: color-mix(in srgb, var(--coral) 16%, transparent); }
+.rc-cats { border-top: 1px solid var(--hairline); background: color-mix(in srgb, var(--text) 2%, transparent); }
+.rc-cat + .rc-cat { border-top: 1px solid var(--hairline); }
+.rc-crow { display: flex; align-items: center; }
+.rc-chead { flex: 1; min-width: 0; display: flex; align-items: center; gap: 9px;
+  padding: 9px 13px 9px 22px; background: none; border: none; cursor: pointer; color: var(--text); text-align: left; }
+.rc-cname { flex: 1; min-width: 0; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rc-edit { flex: none; display: inline-flex; padding: 5px; margin-right: 8px; border-radius: 7px; border: none; background: none; cursor: pointer;
+  color: var(--text-faint); }
+.rc-edit:hover { color: var(--violet); }
+.rc-edit svg { width: 14px; height: 14px; }
+.rc-txs { padding: 2px 13px 8px 30px; display: flex; flex-direction: column; gap: 2px; }
+.rc-tx { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center;
+  font-size: 12px; padding: 3px 0; }
+.rc-txdate { color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.rc-txamt { text-align: right; font-variant-numeric: tabular-nums; }
+.rc-retry { margin-left: 8px; text-decoration: underline; background: none; border: none; color: var(--violet); cursor: pointer; }
 
 /* ============================================================= *
  *  Bottom sheet + form controls                                *

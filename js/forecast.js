@@ -6,6 +6,10 @@
 // ============================================================================
 import { state, subscribe, saveSettings, currentForecast } from "./store.js";
 import { fmtGBP, fmtMonth } from "./sheet.js";
+import { fetchEmma } from "./emma.js";
+import { reconcileMonth } from "./reconcile.js";
+import { buildExcludedSet } from "./categories.js";
+import { openRecurringSheet } from "./finances.js";
 
 const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const shortMonth = (ym) => {
@@ -175,6 +179,132 @@ function monthRow(m) {
 }
 
 // ---------------------------------------------------------------------------
+//  "This month" reconciliation — expected (recurring flows) vs actual (Emma).
+//  Groups → categories → transactions. Lazily pulls the memoised Emma feed.
+// ---------------------------------------------------------------------------
+let rcFeed = null, rcLoading = false, rcErr = null;
+const rcExpanded = new Set();
+const thisMonth = () => new Date().toISOString().slice(0, 7);
+const emmaConfigured = () => !!(state.settings && state.settings.emma_sheet_id);
+
+async function loadReconcile() {
+  if (rcLoading || rcFeed) return;
+  rcLoading = true; rcErr = null;
+  try { rcFeed = await fetchEmma(); }
+  catch (e) { rcErr = e.message || String(e); }
+  finally { rcLoading = false; render(); }
+}
+
+function txRow(t) {
+  return `<div class="rc-tx"><span>${t.customName || t.merchant || t.counterparty || "Unknown"}</span>
+    <span class="rc-txdate">${t.date || ""}</span>
+    <span class="rc-txamt">${fmtGBP(Math.abs(t.amount))}</span></div>`;
+}
+
+function catRow(g, c) {
+  const path = `c:${g.kind}:${g.name}:${c.name}`;
+  const open = rcExpanded.has(path);
+  const flow = c.flows[0];
+  const pending = c.flows.some((f) => f.landed === false);
+  const landedAll = c.flows.length && c.flows.every((f) => f.landed === true);
+  const status = !c.flows.length ? ""
+    : pending ? `<span class="rc-tag amber">to come</span>`
+    : landedAll ? `<span class="rc-tag mint">landed</span>` : "";
+  const nums = c.expected
+    ? `<b style="color:var(--${c.over ? "coral" : "mint"})">${fmtGBP(c.actual)}</b> / ${fmtGBP(c.expected)}`
+    : `<b>${fmtGBP(c.actual)}</b>`;
+  const edit = flow
+    ? `<button class="rc-edit" data-flow="${flow.id}" title="Edit recurring flow"><i data-lucide="pencil"></i></button>` : "";
+  const txns = open && c.txns.length
+    ? `<div class="rc-txs">${c.txns.map(txRow).join("")}</div>` : "";
+  return `<div class="rc-cat ${open ? "open" : ""}">
+    <div class="rc-crow">
+      <button class="rc-chead" data-rc="${encodeURIComponent(path)}">
+        <i data-lucide="chevron-${open ? "down" : "right"}" class="rc-chev"></i>
+        <span class="rc-cname">${c.name}</span>${status}
+        <span class="rc-nums">${nums}</span>
+      </button>${edit}
+    </div>${txns}</div>`;
+}
+
+function groupRow(g) {
+  const path = `g:${g.kind}:${g.name}`;
+  const open = rcExpanded.has(path);
+  const pct = g.expected > 0 ? Math.min(100, Math.round((g.actual / g.expected) * 100)) : 0;
+  const tint = g.over ? "coral" : (g.pendingExpected > 0 ? "amber" : "mint");
+  const numTint = g.kind === "income"
+    ? (g.pendingExpected > 0 ? "amber" : "mint")
+    : (g.over ? "coral" : "mint");
+  const right = `<b style="color:var(--${numTint})">${fmtGBP(g.actual)}</b>${g.expected ? ` / ${fmtGBP(g.expected)}` : ""}`;
+  const note = g.pendingExpected > 0
+    ? `<span class="rc-tag amber">${fmtGBP(g.pendingExpected)} to come</span>`
+    : g.over ? `<span class="rc-tag coral">over</span>`
+    : g.isBudget ? `<span class="rc-tag mint">within</span>` : "";
+  const bar = g.expected > 0
+    ? `<div class="rc-bar"><span style="width:${pct}%;background:var(--${tint})"></span></div>` : "";
+  const cats = open ? `<div class="rc-cats">${g.categories.map((c) => catRow(g, c)).join("")}</div>` : "";
+  return `<div class="rc-grp ${open ? "open" : ""}">
+    <button class="rc-ghead" data-rc="${encodeURIComponent(path)}">
+      <i data-lucide="chevron-${open ? "down" : "right"}" class="rc-chev"></i>
+      <span class="rc-gname">${g.name}</span>${note}
+      <span class="rc-gnums">${right}</span>
+    </button>${bar}${cats}</div>`;
+}
+
+function buildReconcile() {
+  if (!emmaConfigured()) return "";
+  const month = thisMonth();
+  let body;
+  if (rcErr) {
+    body = `<div class="sec-empty">Couldn't load Emma: ${rcErr} <button class="rc-retry" data-rcload>Retry</button></div>`;
+  } else if (rcFeed == null) {
+    body = `<div class="sec-empty">${rcLoading ? "Reconciling against Emma…" : `<button class="rc-retry" data-rcload>Load this month from Emma</button>`}</div>`;
+  } else {
+    const r = reconcileMonth({
+      month, txns: rcFeed.txns,
+      recurring_flows: state.recurring_flows,
+      categories: state.categories,
+      category_rules: state.category_rules,
+      budgets: (state.settings && state.settings.forecast_budgets) || {},
+      excluded: buildExcludedSet(state.categories),
+    });
+    const groups = [...r.income, ...r.expense];
+    body = groups.length
+      ? groups.map(groupRow).join("")
+      : `<div class="sec-empty">No recurring flows or spend matched this month yet.</div>`;
+  }
+  return `<section class="rc-card glass">
+    <div class="rc-head">
+      <div><div class="eyebrow">This month · ${fmtMonth(month)}</div>
+        <p class="sec-sub">Expected vs actual, live from Emma. Green within, red over, amber still to land.</p></div>
+      <button class="sec-sync" data-rcrefresh ${rcLoading ? "disabled" : ""}>
+        <i data-lucide="refresh-cw"></i>${rcLoading ? "…" : "Refresh"}</button>
+    </div>
+    <div class="rc-body">${body}</div>
+  </section>`;
+}
+
+function wireReconcile(root) {
+  root.querySelectorAll("[data-rcload]").forEach((b) => b.onclick = () => loadReconcile());
+  root.querySelectorAll("[data-rcrefresh]").forEach((b) => b.onclick = async () => {
+    rcLoading = true; render();
+    try { rcFeed = await fetchEmma(true); rcErr = null; }
+    catch (e) { rcErr = e.message || String(e); }
+    finally { rcLoading = false; render(); }
+  });
+  root.querySelectorAll("[data-rc]").forEach((b) => b.onclick = () => {
+    const p = decodeURIComponent(b.dataset.rc);
+    rcExpanded.has(p) ? rcExpanded.delete(p) : rcExpanded.add(p);
+    render();
+  });
+  root.querySelectorAll("[data-flow]").forEach((b) => b.onclick = (e) => {
+    e.stopPropagation();
+    const flow = state.recurring_flows.find((f) => f.id === b.dataset.flow);
+    if (flow) openRecurringSheet(flow, render);
+  });
+}
+
+// ---------------------------------------------------------------------------
 //  Render
 // ---------------------------------------------------------------------------
 function render() {
@@ -194,8 +324,11 @@ function render() {
     <div class="segmented cf-scenario">${segs}</div>
     <div class="cf-card glass">${buildChart(fc)}</div>
     ${buildAlerts(fc)}
+    ${buildReconcile()}
     <div class="cf-tablehead"><span>Month</span><span>Net</span><span>Cash</span><span></span></div>
     <div class="cf-table">${fc.months.map(monthRow).join("")}</div>`;
+
+  wireReconcile(root);
 
   // scenario switch — persists to settings.forecast_confidence (subscribers re-render)
   root.querySelectorAll("[data-scenario]").forEach((b) =>
@@ -228,4 +361,5 @@ function render() {
 export function mountForecast() {
   subscribe(render);
   render();
+  if (emmaConfigured()) loadReconcile();   // lazy, non-blocking
 }
