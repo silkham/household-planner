@@ -6,6 +6,7 @@ import { state, subscribe } from "./store.js";
 import { openSheet, fmtGBP, fmtMonth } from "./sheet.js";
 import { monthlyPayment } from "./engine.js";
 import { syncBalancesFromEmma } from "./emma.js";
+import { mountDetected } from "./recurring.js";
 
 // ---- option lists ----------------------------------------------------------
 const opt = (arr) => arr.map((v) => ({ label: v, value: v }));
@@ -64,7 +65,7 @@ const SCHEMAS = {
   recurring_flows: {
     table: "recurring_flows", title: "Recurring flow",
     blank: { name: "", kind: "expense", amount: 0, category: "Other", start_month: null,
-             end_month: null, annual_uplift_pct: null, uplift_month: 4, notes: null },
+             end_month: null, annual_uplift_pct: null, uplift_month: 4, emma_match_key: null, notes: null },
     fields: [
       { key: "name", label: "Name", type: "text", placeholder: "Mortgage" },
       { key: "kind", label: "Type", type: "segmented", options: KIND_SEG },
@@ -76,6 +77,7 @@ const SCHEMAS = {
       { key: "uplift_month", label: "Uplift month (1–12)", type: "number", min: 1, max: 12,
         showIf: (d) => d.annual_uplift_pct != null && d.annual_uplift_pct !== "" },
       { key: "notes", label: "Notes", type: "textarea" },
+      { key: "emma_match_key", type: "hidden" },  // links a detected flow back to its Emma merchant
     ],
     impact: (d) => `${d.kind === "income" ? "+" : "−"}${fmtGBP(d.amount)}/mo from ${fmtMonth(d.start_month)}`
       + (d.annual_uplift_pct ? ` · +${(d.annual_uplift_pct * 100).toFixed(1)}%/yr` : ""),
@@ -167,6 +169,20 @@ function edit(entity, record) {
     record: record.id ? record : { ...s.blank },
     impact: s.impact,
     onDone: render,
+  });
+}
+
+// Open the recurring-flow sheet pre-filled from an arbitrary record (used by the
+// Emma recurring detector — confirm-before-create, with the live cashflow ripple
+// as the confirmation). `onDone` fires after the tab re-renders.
+export function openRecurringSheet(record, onDone) {
+  const s = SCHEMAS.recurring_flows;
+  openSheet({
+    title: record.id ? s.title : "New recurring flow",
+    table: s.table, fields: s.fields,
+    record: record.id ? record : { ...s.blank, ...record },
+    impact: s.impact,
+    onDone: () => { render(); onDone && onDone(); },
   });
 }
 
@@ -334,6 +350,7 @@ function render() {
 
   root.innerHTML =
     section("accounts", "Accounts", "Where money sits. Emergency & investments are ring-fenced from projects.", accountsBody, { totals: accountsTotals, action: syncAction }) +
+    `<div id="recurring-detect"></div>` +
     section("recurring_flows", "Recurring", "Monthly income and outgoings.", flowsBody) +
     section("salary_changes", "Salary changes", "Step-changes that aren't just annual uplifts.", salaryBody, salaryOpts) +
     section("bonuses", "Bonuses", "Lumpy annual income, weighted by confidence.", bonusBody) +
@@ -371,6 +388,9 @@ function render() {
       window.lucide && lucide.createIcons({ nameAttr: "data-lucide" });
     }
   };
+  // Emma recurring-payment detector (self-managed, lazy fetch)
+  mountDetected(openRecurringSheet);
+
   window.lucide && lucide.createIcons({ nameAttr: "data-lucide" });
 }
 

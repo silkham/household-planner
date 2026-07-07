@@ -27,8 +27,14 @@ function isoDateInt(s) {
 }
 
 // Fetch + parse the configured Emma tab into transaction objects.
-// Returns { header, txns }. Cheap enough to call on demand.
-export async function fetchEmma() {
+// Returns { header, txns }. Result is memoised so the Spending tab, recurring
+// detection and balance sync share ONE Edge Function call — pass force=true to
+// refresh (Spending's Refresh button + syncBalancesFromEmma do).
+let _feedCache = null;
+export function clearEmmaCache() { _feedCache = null; }
+
+export async function fetchEmma(force = false) {
+  if (_feedCache && !force) return _feedCache;
   const s = state.settings || {};
   const sheetId = s.emma_sheet_id;
   const tab = s.emma_tab || "Mclean Household";
@@ -59,14 +65,15 @@ export async function fetchEmma() {
     counterparty: get(r, "Counterparty"),
     type: get(r, "Type"),
   }));
-  return { header, txns };
+  _feedCache = { header, txns };
+  return _feedCache;
 }
 
 // Recompute balance for every Emma-mapped account and write it back.
 // balance = anchor_balance + SUM(amount for that account, dated after anchor).
 // Returns { updated, txnCount }.
 export async function syncBalancesFromEmma() {
-  const { txns } = await fetchEmma();
+  const { txns } = await fetchEmma(true);  // force a fresh pull on explicit sync
   const mapped = state.accounts.filter((a) => a.emma_account && a.anchor_balance != null);
 
   const writes = mapped.map((a) => {

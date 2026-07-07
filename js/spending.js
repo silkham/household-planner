@@ -55,7 +55,7 @@ async function load(force = false) {
   if (loading || (txns && !force)) return;
   loading = true; loadErr = null; render();
   try {
-    const res = await fetchEmma();
+    const res = await fetchEmma(force);
     txns = res.txns || [];
   } catch (e) {
     loadErr = e.message || String(e);

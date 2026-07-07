@@ -5,5 +5,5 @@
 //  can confirm which deployed build the browser actually loaded.
 //    major.minor.patch — minor tracks a shipped phase, patch a fix/tweak.
 // ============================================================================
-export const APP_VERSION = "1.2.0";   // 1.2 = Spending tab (Emma phase 1b)
+export const APP_VERSION = "1.3.0";   // 1.3 = recurring detection → one-tap link (Emma phase 1c)
 export const BUILD_DATE  = "2026-07-07";

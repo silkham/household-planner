@@ -1,25 +1,32 @@
 #!/usr/bin/env bash
-# Run the cashflow-engine unit tests.
-# The engine is a browser ES module, so we strip `export ` and concatenate it
-# with the import-free test file into one bundle, then run under whatever JS
-# runtime exists: node if installed, else osascript (JavaScriptCore) on macOS.
+# Run the pure-logic unit tests (cashflow engine + Emma recurring detection).
+# These are browser ES modules, so we strip `import …` lines and leading
+# `export ` and concatenate each module with its import-free test file into one
+# bundle, then run under whatever JS runtime exists: node if installed, else
+# osascript (JavaScriptCore) on macOS.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-BUNDLE="$(mktemp -t hp-engine-tests-XXXXXX).js"
-trap 'rm -f "$BUNDLE"' EXIT
+run_bundle () {  # $1 = module, $2 = test file, $3 = label
+  local bundle
+  bundle="$(mktemp -t hp-tests-XXXXXX).js"
+  # drop import lines (deps are unused by the pure tests) and leading `export `
+  sed -E '/^import /d; s/^export //' "$1" > "$bundle"
+  cat "$2" >> "$bundle"
+  echo "── $3 ──"
+  if command -v node >/dev/null 2>&1; then
+    node "$bundle"
+  elif command -v osascript >/dev/null 2>&1; then
+    osascript -l JavaScript "$bundle"
+  else
+    echo "no JS runtime found (need node or osascript)" >&2
+    rm -f "$bundle"; exit 127
+  fi
+  rm -f "$bundle"
+}
 
-# strip only leading `export ` (keeps arrow fns / const exports as globals)
-sed -E 's/^export //' js/engine.js  > "$BUNDLE"
-cat tests/engine.tests.js          >> "$BUNDLE"
+if command -v node >/dev/null 2>&1; then echo "runtime: node"
+elif command -v osascript >/dev/null 2>&1; then echo "runtime: osascript (JavaScriptCore)"; fi
 
-if command -v node >/dev/null 2>&1; then
-  echo "runtime: node"
-  node "$BUNDLE"
-elif command -v osascript >/dev/null 2>&1; then
-  echo "runtime: osascript (JavaScriptCore)"
-  osascript -l JavaScript "$BUNDLE"
-else
-  echo "no JS runtime found (need node or osascript)" >&2
-  exit 127
-fi
+run_bundle js/engine.js    tests/engine.tests.js    "cashflow engine"
+run_bundle js/recurring.js tests/recurring.tests.js "recurring detection"

@@ -503,6 +503,32 @@ main { flex: 1; padding: 20px 18px 108px; }
 .sp-load { margin-top: 8px; padding: 9px 16px; border-radius: var(--r-ctrl); border: 1px solid var(--hairline);
   background: var(--card); color: var(--text); cursor: pointer; font-family: var(--font-body); }
 
+/* ---- detected recurring (Emma phase 1c) ---- */
+.rd-body { display: flex; flex-direction: column; gap: 8px; }
+.rd-card { display: flex; align-items: center; gap: 12px; padding: 12px 15px;
+  background: var(--card); border: 1px solid var(--hairline);
+  box-shadow: var(--card-top), var(--shadow); border-radius: var(--r-card);
+  border-left: 3px solid color-mix(in srgb, var(--violet) 55%, var(--hairline));
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.rd-main { flex: 1; min-width: 0; }
+.rd-name { font-weight: 600; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rd-meta { margin-top: 4px; font-size: 12px; color: var(--text-faint); }
+.rd-vary { display: inline-flex; align-items: center; gap: 3px; color: var(--amber); }
+.rd-vary svg { width: 12px; height: 12px; }
+.rd-right { display: flex; flex-direction: column; align-items: flex-end; gap: 7px; }
+.rd-amt { font-family: var(--font-head); font-weight: 500; font-size: 15px; white-space: nowrap; }
+.rd-actions { display: flex; align-items: center; gap: 6px; }
+.rd-add { display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; border-radius: 999px;
+  border: none; cursor: pointer; background: var(--mint); color: #06120c;
+  font-family: var(--font-body); font-weight: 600; font-size: 12.5px; }
+.rd-add svg { width: 13px; height: 13px; }
+.rd-dismiss { display: inline-flex; padding: 6px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--hairline); background: none; color: var(--text-faint); }
+.rd-dismiss svg { width: 13px; height: 13px; }
+.rd-dismiss:hover { color: var(--coral); border-color: color-mix(in srgb, var(--coral) 40%, var(--hairline)); }
+.rd-load { padding: 9px 16px; border-radius: var(--r-ctrl); border: 1px solid var(--hairline);
+  background: var(--card); color: var(--text); cursor: pointer; font-family: var(--font-body); }
+
 /* ============================================================= *
  *  Bottom sheet + form controls                                *
  * ============================================================= */

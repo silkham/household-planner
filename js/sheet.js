@@ -171,6 +171,7 @@ export function openSheet(cfg) {
   const renderBody = () => {
     body.innerHTML = "";
     for (const f of cfg.fields) {
+      if (f.type === "hidden") continue;  // persisted on save, never rendered
       if (f.showIf && !f.showIf(draft)) continue;
       const node = renderField(f, draft, () => {
         if (cfg.typeField && f.key === cfg.typeField) renderBody();
