@@ -283,13 +283,18 @@ function render() {
   const root = document.getElementById("finances-root");
   if (!root) return;
 
-  // Accounts — totals available vs ring-fenced
-  const avail = state.accounts.filter((a) => a.available_for_projects)
-    .reduce((s, a) => s + (+a.balance || 0), 0);
-  const ring = state.accounts.filter((a) => !a.available_for_projects)
-    .reduce((s, a) => s + (+a.balance || 0), 0);
+  // Accounts — split into spendable vs ring-fenced (investments) groups
+  const spendable = state.accounts.filter((a) => a.available_for_projects);
+  const investments = state.accounts.filter((a) => !a.available_for_projects);
+  const avail = spendable.reduce((s, a) => s + (+a.balance || 0), 0);
+  const ring = investments.reduce((s, a) => s + (+a.balance || 0), 0);
+  const acctGroup = (label, list, total) => list.length
+    ? `<div class="fc-group-label">${label}<span class="fc-group-total">${fmtGBP(total)}</span></div>`
+      + list.map(accountCard).join("")
+    : "";
   const accountsBody = state.accounts.length
-    ? state.accounts.map(accountCard).join("")
+    ? acctGroup("Spendable", spendable, avail)
+      + acctGroup("Investments &amp; savings", investments, ring)
     : empty("No accounts yet.");
   const accountsTotals = state.accounts.length
     ? `${badge("available " + fmtGBP(avail), "mint")} ${badge("ring-fenced " + fmtGBP(ring), "text-faint")}` : "";
