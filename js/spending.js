@@ -8,7 +8,7 @@
 import { state, subscribe, saveRow } from "./store.js";
 import { fetchEmma } from "./emma.js";
 import { openSheet, fmtGBP, fmtMonth } from "./sheet.js";
-import { buildExcludedSet, categoryNames, categoryManagerHtml, wireCategoryManager } from "./categories.js";
+import { buildExcludedSet, categoryNames, categoryManagerHtml, wireCategoryManager, txnKey, effectiveCategory } from "./categories.js";
 
 const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const shortMonth = (ym) => {
@@ -25,15 +25,16 @@ let selMonth = null;    // 'YYYY-MM' currently shown
 let openCats = new Set(); // expanded category names in the selected month
 
 // ---- helpers ---------------------------------------------------------------
-// The rule/display key for a transaction: Emma's cleaned merchant name.
-const txKey = (t) => t.customName || t.merchant || t.counterparty || "Unknown";
+// Shared merchant key + rule-aware category (multi-field match, so a re-tag
+// sticks across every month even when Emma's Custom Name varies).
+const txKey = txnKey;
+const effCategory = effectiveCategory;
 
 function rulesMap() {
   const m = new Map();
   for (const r of state.category_rules) m.set(r.match_key, r.category);
   return m;
 }
-const effCategory = (t, rules) => rules.get(txKey(t)) || t.category || "Uncategorised";
 
 // yyyymmdd int → 'YYYY-MM'
 function monthOf(dateInt) {
@@ -139,9 +140,8 @@ function categoryRows(monthTxns, rules) {
 // ---- re-categorise sheet ---------------------------------------------------
 function categorise(key, currentCat) {
   const existing = state.category_rules.find((r) => r.match_key === key);
-  const ruleCats = state.category_rules.map((r) => r.category);
   const excluded = buildExcludedSet(state.categories);
-  const options = categoryNames(state.categories, txns || [], ruleCats)
+  const options = categoryNames(state.categories, txns || [], rulesMap())
     .map((n) => ({ value: n, label: excluded.has(n) ? `${n} · not counted` : n }));
   const current = existing ? existing.category
     : (currentCat === "Uncategorised" ? "" : currentCat);
@@ -223,7 +223,7 @@ function render() {
   root.innerHTML = head + bodyHtml + managerHtml;
 
   // wiring
-  if (txns != null) wireCategoryManager(root);
+  if (txns != null) wireCategoryManager(root, txns, render);
   root.querySelectorAll("[data-refresh]").forEach((b) => b.onclick = () => load(true));
   root.querySelectorAll(".sp-bar").forEach((g) => g.onclick = () => {
     selMonth = g.dataset.month; openCats.clear(); render();

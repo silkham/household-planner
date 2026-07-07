@@ -68,7 +68,11 @@ export function detectRecurring(txns, opts = {}) {
   const groups = new Map();
   for (const t of txns) {
     if (!t.dateInt || !t.amount) continue;
-    const cat = rules.get(mkey(t)) || t.category || "";
+    // rule override matches any identity field (see categories.js)
+    const cat = (t.customName && rules.get(t.customName))
+      || (t.merchant && rules.get(t.merchant))
+      || (t.counterparty && rules.get(t.counterparty))
+      || t.category || "";
     if (excluded.has(cat)) continue;
     const dir = t.amount < 0 ? "out" : "in";
     const gk = mkey(t) + "\u0000" + dir;

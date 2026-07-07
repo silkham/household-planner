@@ -148,6 +148,33 @@ const catOf = (g, name) => g && g.categories.find((c) => c.name === name);
   ok(!res.expense.some((g) => g.name === "Other"), "ended flow excluded (no Other group)");
 }
 
+// ---- 8. a rule matches ANY identity field (cross-month name variance) ------
+{
+  // two "Amazon" txns with DIFFERENT customNames but the same merchant
+  const txns = [
+    { customName: "Amazon", merchant: "Amazon", amount: -30, dateInt: di(2026, 8, 3), category: "Shopping" },
+    { customName: "AMZNMktplace*A1B2", merchant: "Amazon", amount: -45, dateInt: di(2026, 8, 7), category: "Shopping" },
+  ];
+  const res = reconcileMonth({
+    month: MONTH, txns, recurring_flows: [],
+    category_rules: [{ match_key: "Amazon", category: "Amazon" }],  // keyed on merchant name
+    budgets: { "General Expenses": 200 },
+  });
+  const g = gExp(res, "General Expenses");
+  eq(catOf(g, "Amazon").actual, 75, "rule keyed on merchant catches both name variants");
+  ok(!catOf(g, "Shopping"), "neither variant left under the old Emma category");
+}
+
+// ---- 9. a flow matches a txn via its merchant field too --------------------
+{
+  const txns = [{ customName: "SALARY PYMT REF9", merchant: "ASAHI UK LTD", amount: 2900, dateInt: di(2026, 8, 28), category: "Salary" }];
+  const res = reconcileMonth({
+    month: MONTH, txns,
+    recurring_flows: [{ id: "l", name: "Lachlan Salary", kind: "income", amount: 2900, category: "Salary", emma_match_key: "ASAHI UK LTD" }],
+  });
+  eq(lineOf(gInc(res, "Income"), "Lachlan Salary").received, true, "flow matched via merchant field");
+}
+
 // ---- summary ---------------------------------------------------------------
 log(`\nreconcile: ${PASS} passed, ${FAIL} failed`);
 if (FAIL > 0) { if (typeof process !== "undefined") process.exit(1); throw new Error(`${FAIL} failing`); }

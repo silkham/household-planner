@@ -83,6 +83,24 @@ export async function deleteRow(table, id) {
   await loadAll();
 }
 
+// Bulk upsert category_rules (one write, keyed on household_id+match_key) — used
+// by the category merge/delete tool to re-bucket a whole category at once.
+// Optionally delete a managed `categories` row afterwards (merge removes source).
+export async function bulkReassignRules(rules, deleteCategoryId) {
+  const hid = await resolveHousehold();
+  if (rules.length) {
+    const payload = rules.map((r) => ({ ...r, household_id: hid }));
+    const { error } = await HP.from("category_rules")
+      .upsert(payload, { onConflict: "household_id,match_key" });
+    if (error) throw error;
+  }
+  if (deleteCategoryId) {
+    const { error } = await HP.from("categories").delete().eq("id", deleteCategoryId);
+    if (error) throw error;
+  }
+  await loadAll();
+}
+
 // settings is a singleton keyed on household_id (no `id`), so it needs its own
 // save path — upsert on the PK rather than the generic id-based saveRow.
 export async function saveSettings(patch) {

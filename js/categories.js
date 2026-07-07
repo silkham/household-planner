@@ -8,11 +8,29 @@
 //  The pure helpers (buildExcludedSet / categoryNames) are shared by spending.js
 //  and recurring detection so both agree on what counts.
 // ============================================================================
-import { state, saveRow, deleteRow, saveSettings } from "./store.js";
+import { state, saveRow, saveSettings, bulkReassignRules } from "./store.js";
+import { openSheet } from "./sheet.js";
 
 // Non-counting unless a managed row explicitly flips them — Emma's own
 // convention (Excluded) plus internal moves (Transfers).
 export const DEFAULT_EXCLUDED = ["Excluded", "Transfers"];
+
+// ---- shared transaction ↔ category matching (used everywhere) --------------
+// Display/rule key for a transaction: Emma's cleaned merchant name preferred.
+export const txnKey = (t) => t.customName || t.merchant || t.counterparty || "Unknown";
+
+// A category_rules override for a transaction. Emma's Custom Name varies month
+// to month for some merchants (Amazon, refunds…), so we match a rule against
+// ANY of the transaction's identity fields — that's what makes a single re-tag
+// stick across every month. `rules` is a Map<match_key, category>.
+export function ruleCategory(t, rules) {
+  return (t.customName && rules.get(t.customName))
+      || (t.merchant && rules.get(t.merchant))
+      || (t.counterparty && rules.get(t.counterparty))
+      || null;
+}
+export const effectiveCategory = (t, rules) =>
+  ruleCategory(t, rules) || t.category || "Uncategorised";
 
 // Set of category names that DON'T count toward spend.
 export function buildExcludedSet(categories = []) {
@@ -24,10 +42,11 @@ export function buildExcludedSet(categories = []) {
   return set;
 }
 
-// Union of category names to offer: managed rows + whatever the Emma feed and
-// existing rules actually use. Keeps the dropdown complete before anything's
-// been "managed". Sorted, case-insensitive de-dupe (first spelling wins).
-export function categoryNames(categories = [], txns = [], ruleCats = []) {
+// Union of category names to offer: managed rows + the categories the feed
+// resolves to AFTER rules + rule targets. Using the EFFECTIVE category (not the
+// raw Emma one) means a category fully moved away actually disappears from the
+// list. `rules` is a Map<match_key, category>. Sorted, case-insensitive de-dupe.
+export function categoryNames(categories = [], txns = [], rules = new Map()) {
   const seen = new Map(); // lower -> display
   const add = (n) => {
     if (!n) return;
@@ -35,10 +54,12 @@ export function categoryNames(categories = [], txns = [], ruleCats = []) {
     if (!seen.has(k)) seen.set(k, n);
   };
   categories.forEach((c) => add(c.name));
-  txns.forEach((t) => add(t.category));
-  ruleCats.forEach(add);
+  txns.forEach((t) => add(effectiveCategory(t, rules)));
+  rules.forEach((v) => add(v));
   return [...seen.values()].sort((a, b) => a.localeCompare(b));
 }
+
+const rulesMap = () => new Map(state.category_rules.map((r) => [r.match_key, r.category]));
 
 // find a managed row for a name (case-insensitive)
 const managedFor = (name) =>
@@ -53,15 +74,14 @@ export const BUDGET_GROUP = "General Expenses";
 // tied to a known recurring bill — a sensible starting budget for General.
 function suggestedBudget(txns) {
   if (!txns || !txns.length) return null;
-  const rules = new Map(state.category_rules.map((r) => [r.match_key, r.category]));
+  const rules = rulesMap();
   const excluded = buildExcludedSet(state.categories);
   const known = new Set(state.recurring_flows.map((f) => f.emma_match_key).filter(Boolean));
-  const key = (t) => t.customName || t.merchant || t.counterparty || "Unknown";
-  const eff = (t) => rules.get(key(t)) || t.category || "Uncategorised";
+  const isKnown = (t) => known.has(t.customName) || known.has(t.merchant) || known.has(t.counterparty);
   const byMonth = new Map();
   for (const t of txns) {
     if (t.amount >= 0 || !t.dateInt) continue;
-    if (excluded.has(eff(t)) || known.has(key(t))) continue;
+    if (excluded.has(effectiveCategory(t, rules)) || isKnown(t)) continue;
     const mk = `${Math.floor(t.dateInt / 10000)}-${Math.floor((t.dateInt % 10000) / 100)}`;
     byMonth.set(mk, (byMonth.get(mk) || 0) - t.amount);
   }
@@ -70,12 +90,55 @@ function suggestedBudget(txns) {
   return Math.round(total / byMonth.size / 10) * 10;   // nearest £10
 }
 
+// distinct rule-keys whose EFFECTIVE category is `sourceName` right now.
+function merchantsIn(sourceName, txns, rules) {
+  const keys = new Set();
+  for (const t of txns) {
+    if (effectiveCategory(t, rules).toLowerCase() === sourceName.toLowerCase())
+      keys.add(txnKey(t));
+  }
+  // also pick up any existing rule pointing AT the source (merchant may have no
+  // txn in the current feed window)
+  for (const r of state.category_rules)
+    if (r.category.toLowerCase() === sourceName.toLowerCase()) keys.add(r.match_key);
+  return [...keys];
+}
+
+// Merge/delete sheet: re-bucket a whole category's merchants at once.
+function openReassign(sourceName, txns, onDone) {
+  const rules = rulesMap();
+  const m = managedFor(sourceName);
+  const keys = merchantsIn(sourceName, txns, rules);
+  const targets = categoryNames(state.categories, txns, rules)
+    .filter((n) => n.toLowerCase() !== sourceName.toLowerCase());
+  if (!targets.some((n) => n.toLowerCase() === "uncategorised")) targets.unshift("Uncategorised");
+  const options = targets.map((n) => ({ value: n, label: n }));
+
+  openSheet({
+    title: `Move “${sourceName}”`,
+    record: { target: "Uncategorised" },
+    fields: [
+      { key: "target", label: "Move all transactions to", type: "select", options,
+        help: `Re-buckets ${keys.length} merchant${keys.length === 1 ? "" : "s"} across every month. Pick “Uncategorised” to clear it out.` },
+      { key: "_new", label: "…or type a new category", type: "text", placeholder: "e.g. Subscriptions" },
+    ],
+    saveLabel: "Move",
+    save: async (clean) => {
+      const target = ((clean._new || "").trim()) || clean.target;
+      if (!target) throw new Error("Pick or name a target category.");
+      if (target.toLowerCase() === sourceName.toLowerCase()) throw new Error("Pick a different category.");
+      const ruleRows = keys.map((k) => ({ match_key: k, category: target }));
+      await bulkReassignRules(ruleRows, m ? m.id : null);
+    },
+    onDone,
+  });
+}
+
 const budgets = () => (state.settings && state.settings.forecast_budgets) || {};
 
 // ---- manager section (bottom of the Spending tab) --------------------------
 export function categoryManagerHtml(txns) {
-  const ruleCats = state.category_rules.map((r) => r.category);
-  const names = categoryNames(state.categories, txns || [], ruleCats);
+  const names = categoryNames(state.categories, txns || [], rulesMap());
   const excluded = buildExcludedSet(state.categories);
 
   const rows = names.map((name) => {
@@ -84,15 +147,12 @@ export function categoryManagerHtml(txns) {
     const tag = m
       ? (m.counts_as_spend ? "" : `<span class="cat-tag">not counted</span>`)
       : `<span class="cat-tag dim">from Emma</span>`;
-    const del = m
-      ? `<button class="cat-del" data-del="${m.id}" title="Delete category"><i data-lucide="trash-2"></i></button>`
-      : "";
     return `<div class="cat-row">
       <span class="cat-name">${name}</span>
       ${tag}
       <button class="toggle ${counts ? "on" : ""}" data-toggle="${encodeURIComponent(name)}"
         title="${counts ? "Counts as spend" : "Excluded from spend"}"><span class="knob"></span></button>
-      ${del}
+      <button class="cat-move" data-move="${encodeURIComponent(name)}" title="Move / merge / delete"><i data-lucide="folder-input"></i></button>
     </div>`;
   }).join("");
 
@@ -122,7 +182,7 @@ export function categoryManagerHtml(txns) {
   </section>`;
 }
 
-export function wireCategoryManager(root) {
+export function wireCategoryManager(root, txns, onDone) {
   root.querySelectorAll("[data-toggle]").forEach((btn) => btn.onclick = async () => {
     const name = decodeURIComponent(btn.dataset.toggle);
     const m = managedFor(name);
@@ -144,11 +204,9 @@ export function wireCategoryManager(root) {
     catch (e) { alert("Couldn't save budget: " + e.message); }
   };
 
-  root.querySelectorAll("[data-del]").forEach((btn) => btn.onclick = async () => {
-    if (!confirm("Delete this category? Transactions revert to counting as spend.")) return;
-    try { await deleteRow("categories", btn.dataset.del); }
-    catch (e) { alert("Delete failed: " + e.message); }
-  });
+  // Move / merge / delete — re-bucket a whole category's merchants at once.
+  root.querySelectorAll("[data-move]").forEach((btn) => btn.onclick = () =>
+    openReassign(decodeURIComponent(btn.dataset.move), txns || [], onDone));
 
   const addBtn = root.querySelector("#cat-add-btn");
   const addInput = root.querySelector("#cat-new");

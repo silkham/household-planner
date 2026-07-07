@@ -59,7 +59,17 @@ export function reconcileMonth(opts = {}) {
     ? opts.rules
     : new Map((opts.category_rules || []).map((r) => [r.match_key, r.category]));
 
-  const effCat = (t) => rules.get(txKey(t)) || t.category || "Uncategorised";
+  // Rule override matches ANY identity field, so a re-tag sticks across months
+  // even when Emma's Custom Name varies (Amazon, refunds…).
+  const effCat = (t) =>
+    (t.customName && rules.get(t.customName))
+    || (t.merchant && rules.get(t.merchant))
+    || (t.counterparty && rules.get(t.counterparty))
+    || t.category || "Uncategorised";
+
+  // A transaction "is" a flow/merchant key if any of its identity fields equals it.
+  const matchesKey = (t, key) => !!key
+    && (t.customName === key || t.merchant === key || t.counterparty === key);
 
   // This month's counting transactions (both directions).
   const monthTxns = txns.filter((t) => t.dateInt && monthOf(t.dateInt) === month
@@ -68,10 +78,12 @@ export function reconcileMonth(opts = {}) {
   const activeFlows = flows.filter((f) => flowActive(f, month));
   // Every known bill's merchant key — used to carve known spend out of General.
   const knownKeys = new Set(activeFlows.map((f) => f.emma_match_key).filter(Boolean));
+  const txIsKnown = (t) =>
+    knownKeys.has(t.customName) || knownKeys.has(t.merchant) || knownKeys.has(t.counterparty);
 
   // txns this month that match a specific flow (by key + direction)
   const flowTxns = (f, wantExpense) => f.emma_match_key
-    ? monthTxns.filter((t) => txKey(t) === f.emma_match_key && (t.amount < 0) === wantExpense)
+    ? monthTxns.filter((t) => matchesKey(t, f.emma_match_key) && (t.amount < 0) === wantExpense)
     : [];
 
   // Build the known-figure groups for one direction. Income collapses into a
@@ -109,7 +121,7 @@ export function reconcileMonth(opts = {}) {
   const expense = knownGroups("expense");
 
   // ---- General Expenses: counting outflows NOT tied to a known bill --------
-  const genTxns = monthTxns.filter((t) => t.amount < 0 && !knownKeys.has(txKey(t)));
+  const genTxns = monthTxns.filter((t) => t.amount < 0 && !txIsKnown(t));
   const catMap = new Map();
   for (const t of genTxns) {
     const c = effCat(t);
