@@ -8,6 +8,7 @@
 import { state, subscribe, saveRow } from "./store.js";
 import { fetchEmma } from "./emma.js";
 import { openSheet, fmtGBP, fmtMonth } from "./sheet.js";
+import { buildExcludedSet, categoryNames, categoryManagerHtml, wireCategoryManager } from "./categories.js";
 
 const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const shortMonth = (ym) => {
@@ -15,9 +16,6 @@ const shortMonth = (ym) => {
   const [y, m] = ym.split("-");
   return `${MON[(+m || 1) - 1]} '${y.slice(2)}`;
 };
-
-// Emma categories that never count as spend (internal moves / explicit excludes).
-const SKIP = new Set(["Excluded", "Transfers"]);
 
 // ---- module state ----------------------------------------------------------
 let txns = null;        // cached feed rows (null = not loaded yet)
@@ -45,9 +43,9 @@ function monthOf(dateInt) {
   return `${y}-${String(m).padStart(2, "0")}`;
 }
 
-// A spend transaction: an outflow whose effective category isn't skipped.
-function isSpend(t, rules) {
-  return t.amount < 0 && !SKIP.has(effCategory(t, rules));
+// A spend transaction: an outflow whose effective category still counts.
+function isSpend(t, rules, excluded) {
+  return t.amount < 0 && !excluded.has(effCategory(t, rules));
 }
 
 // ---- data load -------------------------------------------------------------
@@ -141,20 +139,34 @@ function categoryRows(monthTxns, rules) {
 // ---- re-categorise sheet ---------------------------------------------------
 function categorise(key, currentCat) {
   const existing = state.category_rules.find((r) => r.match_key === key);
-  const known = [...new Set([
-    ...state.category_rules.map((r) => r.category),
-    ...(txns || []).map((t) => t.category).filter(Boolean),
-  ])].sort();
+  const ruleCats = state.category_rules.map((r) => r.category);
+  const excluded = buildExcludedSet(state.categories);
+  const options = categoryNames(state.categories, txns || [], ruleCats)
+    .map((n) => ({ value: n, label: excluded.has(n) ? `${n} · not counted` : n }));
+  const current = existing ? existing.category
+    : (currentCat === "Uncategorised" ? "" : currentCat);
+
   openSheet({
     title: `Categorise “${key}”`,
-    table: "category_rules",
-    record: existing || { match_key: key, category: currentCat === "Uncategorised" ? "" : currentCat },
+    table: "category_rules",   // keeps the quiet Delete → revert to Emma's category
+    record: existing || { match_key: key, category: current },
     fields: [
-      { key: "category", label: "Category", type: "text",
-        placeholder: "e.g. Groceries",
-        help: `Applies to every transaction from “${key}”, past and future.`
-          + (known.length ? ` Existing: ${known.join(", ")}.` : "") },
+      { key: "category", label: "Category", type: "select", options, placeholder: "Choose a category…",
+        help: `Applies to every transaction from “${key}”, past & future.` },
+      { key: "_newCat", label: "…or add a new one", type: "text", placeholder: "e.g. Home improvement" },
     ],
+    // custom write: optionally create the new category, then upsert the rule
+    save: async (clean) => {
+      let cat = clean.category;
+      const fresh = (clean._newCat || "").trim();
+      if (fresh) {
+        cat = fresh;
+        if (!state.categories.some((c) => c.name.toLowerCase() === fresh.toLowerCase()))
+          await saveRow("categories", { name: fresh, counts_as_spend: true, sort_order: 99 });
+      }
+      if (!cat) throw new Error("Pick or add a category.");
+      await saveRow("category_rules", { ...(existing ? { id: existing.id } : {}), match_key: key, category: cat });
+    },
     onDone: render,
   });
 }
@@ -164,10 +176,11 @@ function render() {
   const root = document.getElementById("spending-root");
   if (!root) return;
   const rules = rulesMap();
+  const excluded = buildExcludedSet(state.categories);
 
   const head = `<div class="sp-top">
     <div><div class="eyebrow">Spending</div>
-      <p class="sec-sub">Actual outflows from Emma, by month & category. Excludes transfers.</p></div>
+      <p class="sec-sub">Actual outflows from Emma, by month & category. Excludes categories turned off below.</p></div>
     <button class="sec-sync" data-refresh ${loading ? "disabled" : ""}>
       <i data-lucide="refresh-cw"></i>${loading ? "Loading…" : "Refresh"}</button>
   </div>`;
@@ -178,7 +191,7 @@ function render() {
   } else if (txns == null) {
     bodyHtml = `<div class="sec-empty">${loading ? "Loading spending…" : `<button class="sp-load" data-refresh>Load spending from Emma</button>`}</div>`;
   } else {
-    const spend = txns.filter((t) => isSpend(t, rules));
+    const spend = txns.filter((t) => isSpend(t, rules, excluded));
     // monthly totals
     const byMonth = new Map();
     for (const t of spend) {
@@ -205,9 +218,12 @@ function render() {
     }
   }
 
-  root.innerHTML = head + bodyHtml;
+  // Category manager sits at the foot of the tab once the feed is loaded.
+  const managerHtml = txns != null ? categoryManagerHtml(txns) : "";
+  root.innerHTML = head + bodyHtml + managerHtml;
 
   // wiring
+  if (txns != null) wireCategoryManager(root);
   root.querySelectorAll("[data-refresh]").forEach((b) => b.onclick = () => load(true));
   root.querySelectorAll(".sp-bar").forEach((g) => g.onclick = () => {
     selMonth = g.dataset.month; openCats.clear(); render();

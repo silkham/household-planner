@@ -115,6 +115,16 @@ const MAX = di(2026, 8, 15);   // treat mid-Aug 2026 as "today" (feed's newest t
   eq(find(detectRecurring(txns, { maxDate: MAX, rules }), "Wise"), undefined, "rule → Transfers → skipped");
 }
 
+// ---- 10b. a custom excluded set (managed categories) is honoured ----------
+{
+  const txns = monthly("Council Tax", -180, 2026, 2, 6, 15, "Bills");
+  // household turned "Bills" off → should not be detected
+  const res = detectRecurring(txns, { maxDate: MAX, excluded: new Set(["Bills"]) });
+  eq(find(res, "Council Tax"), undefined, "opts.excluded set skips that category");
+  // …but with the default excluded set it IS detected
+  ok(!!find(detectRecurring(txns, { maxDate: MAX }), "Council Tax"), "default excluded still detects Bills");
+}
+
 // ---- 11. results sorted by monthly amount, largest first ------------------
 {
   const txns = [

@@ -37,13 +37,13 @@ export async function resolveHousehold() {
 const TABLES = [
   "accounts", "recurring_flows", "salary_changes", "bonuses",
   "financing_options", "life_events", "projects", "project_items",
-  "category_rules",
+  "category_rules", "categories",
 ];
 
 export const state = {
   accounts: [], recurring_flows: [], salary_changes: [], bonuses: [],
   financing_options: [], life_events: [], projects: [], project_items: [],
-  category_rules: [], settings: null,
+  category_rules: [], categories: [], settings: null,
 };
 
 const subs = new Set();
@@ -124,6 +124,15 @@ export async function seedIfEmpty() {
   const inserts = [];
 
   if (!state.settings) inserts.push(HP.from("settings").insert({ ...H }));
+
+  // The two non-counting categories — everything else counts by default and is
+  // discovered from the Emma feed. Seeded so "don't count" works out of the box.
+  if (state.categories.length === 0) {
+    inserts.push(HP.from("categories").insert([
+      { ...H, name: "Transfers", counts_as_spend: false, sort_order: 0 },
+      { ...H, name: "Excluded",  counts_as_spend: false, sort_order: 1 },
+    ]));
+  }
 
   if (state.accounts.length === 0) {
     inserts.push(HP.from("accounts").insert([

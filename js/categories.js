@@ -1,0 +1,115 @@
+// ============================================================================
+//  categories.js — managed spend categories (Emma phase 1d).
+//  "Counts as spend" is a per-category flag the household controls, replacing
+//  the old hardcoded {Excluded, Transfers} skip. Emma's own categories still
+//  flow through the feed; this layers flags + custom buckets on top. A category
+//  counts as spend unless a managed row (or the safety default) says otherwise.
+//
+//  The pure helpers (buildExcludedSet / categoryNames) are shared by spending.js
+//  and recurring detection so both agree on what counts.
+// ============================================================================
+import { state, saveRow, deleteRow } from "./store.js";
+
+// Non-counting unless a managed row explicitly flips them — Emma's own
+// convention (Excluded) plus internal moves (Transfers).
+export const DEFAULT_EXCLUDED = ["Excluded", "Transfers"];
+
+// Set of category names that DON'T count toward spend.
+export function buildExcludedSet(categories = []) {
+  const set = new Set(DEFAULT_EXCLUDED);
+  for (const c of categories) {
+    if (c.counts_as_spend === false) set.add(c.name);
+    else set.delete(c.name);   // an explicit "counts" row overrides the default
+  }
+  return set;
+}
+
+// Union of category names to offer: managed rows + whatever the Emma feed and
+// existing rules actually use. Keeps the dropdown complete before anything's
+// been "managed". Sorted, case-insensitive de-dupe (first spelling wins).
+export function categoryNames(categories = [], txns = [], ruleCats = []) {
+  const seen = new Map(); // lower -> display
+  const add = (n) => {
+    if (!n) return;
+    const k = n.toLowerCase();
+    if (!seen.has(k)) seen.set(k, n);
+  };
+  categories.forEach((c) => add(c.name));
+  txns.forEach((t) => add(t.category));
+  ruleCats.forEach(add);
+  return [...seen.values()].sort((a, b) => a.localeCompare(b));
+}
+
+// find a managed row for a name (case-insensitive)
+const managedFor = (name) =>
+  state.categories.find((c) => c.name.toLowerCase() === name.toLowerCase());
+
+// ---- manager section (bottom of the Spending tab) --------------------------
+export function categoryManagerHtml(txns) {
+  const ruleCats = state.category_rules.map((r) => r.category);
+  const names = categoryNames(state.categories, txns || [], ruleCats);
+  const excluded = buildExcludedSet(state.categories);
+
+  const rows = names.map((name) => {
+    const m = managedFor(name);
+    const counts = !excluded.has(name);
+    const tag = m
+      ? (m.counts_as_spend ? "" : `<span class="cat-tag">not counted</span>`)
+      : `<span class="cat-tag dim">from Emma</span>`;
+    const del = m
+      ? `<button class="cat-del" data-del="${m.id}" title="Delete category"><i data-lucide="trash-2"></i></button>`
+      : "";
+    return `<div class="cat-row">
+      <span class="cat-name">${name}</span>
+      ${tag}
+      <button class="toggle ${counts ? "on" : ""}" data-toggle="${encodeURIComponent(name)}"
+        title="${counts ? "Counts as spend" : "Excluded from spend"}"><span class="knob"></span></button>
+      ${del}
+    </div>`;
+  }).join("");
+
+  return `<section class="fsection cat-section">
+    <div class="sec-head">
+      <div><div class="eyebrow">Categories</div>
+        <p class="sec-sub">Toggle off any bucket that shouldn't count as spend — transfers, credit-card payments, one-offs.</p></div>
+    </div>
+    <div class="sec-body cat-body">
+      ${rows || `<div class="sec-empty">No categories yet — load Emma above.</div>`}
+      <div class="cat-add">
+        <input class="field" id="cat-new" placeholder="New category name" />
+        <button class="cat-addbtn" id="cat-add-btn"><i data-lucide="plus"></i>Add</button>
+      </div>
+    </div>
+  </section>`;
+}
+
+export function wireCategoryManager(root) {
+  root.querySelectorAll("[data-toggle]").forEach((btn) => btn.onclick = async () => {
+    const name = decodeURIComponent(btn.dataset.toggle);
+    const m = managedFor(name);
+    const nowCounts = btn.classList.contains("on");
+    try {
+      if (m) await saveRow("categories", { id: m.id, name: m.name, counts_as_spend: !nowCounts, sort_order: m.sort_order });
+      else   await saveRow("categories", { name, counts_as_spend: !nowCounts, sort_order: 99 });
+    } catch (e) { alert("Couldn't update category: " + e.message); }
+  });
+
+  root.querySelectorAll("[data-del]").forEach((btn) => btn.onclick = async () => {
+    if (!confirm("Delete this category? Transactions revert to counting as spend.")) return;
+    try { await deleteRow("categories", btn.dataset.del); }
+    catch (e) { alert("Delete failed: " + e.message); }
+  });
+
+  const addBtn = root.querySelector("#cat-add-btn");
+  const addInput = root.querySelector("#cat-new");
+  const doAdd = async () => {
+    const name = (addInput.value || "").trim();
+    if (!name) return;
+    if (managedFor(name)) { addInput.value = ""; return; }
+    addBtn.disabled = true;
+    try { await saveRow("categories", { name, counts_as_spend: true, sort_order: 99 }); }
+    catch (e) { alert("Couldn't add category: " + e.message); addBtn.disabled = false; }
+  };
+  if (addBtn) addBtn.onclick = doAdd;
+  if (addInput) addInput.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); doAdd(); } };
+}

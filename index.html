@@ -529,6 +529,28 @@ main { flex: 1; padding: 20px 18px 108px; }
 .rd-load { padding: 9px 16px; border-radius: var(--r-ctrl); border: 1px solid var(--hairline);
   background: var(--card); color: var(--text); cursor: pointer; font-family: var(--font-body); }
 
+/* ---- category manager (Emma phase 1d) ---- */
+.cat-section { margin-top: 22px; }
+.cat-body { display: flex; flex-direction: column; gap: 6px; }
+.cat-row { display: flex; align-items: center; gap: 10px; padding: 9px 13px;
+  background: var(--card); border: 1px solid var(--hairline); border-radius: var(--r-ctrl); }
+.cat-name { flex: 1; min-width: 0; font-size: 14px; font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cat-tag { font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase; font-weight: 600;
+  color: var(--coral); padding: 2px 7px; border-radius: 999px;
+  background: color-mix(in srgb, var(--coral) 14%, transparent); }
+.cat-tag.dim { color: var(--text-faint); background: none; }
+.cat-del { display: inline-flex; padding: 6px; border-radius: 8px; cursor: pointer;
+  border: none; background: none; color: var(--text-faint); }
+.cat-del:hover { color: var(--coral); }
+.cat-del svg { width: 15px; height: 15px; }
+.cat-add { display: flex; gap: 8px; margin-top: 6px; }
+.cat-add .field { flex: 1; }
+.cat-addbtn { display: inline-flex; align-items: center; gap: 4px; padding: 0 15px; border-radius: var(--r-ctrl);
+  border: none; cursor: pointer; background: var(--violet); color: #fff;
+  font-family: var(--font-body); font-weight: 600; font-size: 13px; white-space: nowrap; }
+.cat-addbtn svg { width: 14px; height: 14px; }
+
 /* ============================================================= *
  *  Bottom sheet + form controls                                *
  * ============================================================= */
