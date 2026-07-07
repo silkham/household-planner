@@ -291,6 +291,19 @@ main { flex: 1; padding: 20px 18px 108px; }
 .sec-add:hover { border-color: var(--mint); }
 .sec-add:active { transform: scale(.92); }
 .sec-add svg { width: 18px; height: 18px; }
+.sec-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+.sec-sync {
+  display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px;
+  border-radius: 10px; border: 1px solid var(--hairline); background: var(--card);
+  color: var(--violet); font: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer;
+  transition: transform var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
+}
+.sec-sync:hover { border-color: var(--violet); }
+.sec-sync:active { transform: scale(.96); }
+.sec-sync:disabled { opacity: .6; cursor: default; }
+.sec-sync svg { width: 15px; height: 15px; }
+.sec-sync[disabled] svg { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 .sec-body { display: flex; flex-direction: column; gap: 8px; }
 .sec-empty { padding: 16px; border: 1px dashed var(--hairline); border-radius: var(--r-card);
              color: var(--text-dim); font-size: 13px; line-height: 1.5; }

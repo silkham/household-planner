@@ -5,6 +5,7 @@
 import { state, subscribe } from "./store.js";
 import { openSheet, fmtGBP, fmtMonth } from "./sheet.js";
 import { monthlyPayment } from "./engine.js";
+import { syncBalancesFromEmma } from "./emma.js";
 
 // ---- option lists ----------------------------------------------------------
 const opt = (arr) => arr.map((v) => ({ label: v, value: v }));
@@ -40,16 +41,23 @@ const allFlows = () =>
 const SCHEMAS = {
   accounts: {
     table: "accounts", title: "Account",
-    blank: { name: "", kind: "current", balance: 0, available_for_projects: true, notes: null },
+    blank: { name: "", kind: "current", balance: 0, available_for_projects: true, emma_account: null, notes: null },
     fields: [
-      { key: "name", label: "Name", type: "text", placeholder: "Joint current" },
+      { key: "name", label: "Name", type: "text", placeholder: "Natwest current" },
       { key: "kind", label: "Kind", type: "select", options: ACCOUNT_KINDS },
-      { key: "balance", label: "Balance £", type: "money", step: "100" },
+      { key: "balance", label: "Balance today £", type: "money", step: "100",
+        help: "Re-anchors to today. If linked to Emma, its feed keeps this current between edits." },
       { key: "available_for_projects", label: "Available for projects", type: "toggle" },
+      { key: "emma_account", label: "Emma account name (optional)", type: "text", placeholder: "PREMIER SELECT",
+        help: "Exact 'Account' name in the Emma sheet — links this account to the transaction feed." },
       { key: "notes", label: "Notes", type: "textarea" },
     ],
-    // refresh the balance timestamp whenever the sheet saves
-    derive: () => ({ balance_updated_at: new Date().toISOString() }),
+    // saving (re-)anchors the balance to today; Emma sync derives from here.
+    derive: (d) => ({
+      anchor_balance: d.balance,
+      anchor_date: new Date().toISOString().slice(0, 10),
+      balance_updated_at: new Date().toISOString(),
+    }),
     impact: (d) => `${fmtGBP(d.balance)} · ${d.available_for_projects ? "counts toward projects" : "ring-fenced"}`,
   },
 
@@ -171,11 +179,12 @@ function accountCard(a) {
   const stale = daysSince(a.balance_updated_at);
   const nudge = stale != null && stale > 60
     ? `<span class="fc-nudge"><i data-lucide="alert-circle"></i>${stale}d old</span>` : "";
+  const emma = a.emma_account ? badge("Emma", "violet") : "";
   return card(a, "accounts", `
     <div class="fc-main">
       <div class="fc-name">${a.name}</div>
       <div class="fc-sub">${badge(a.kind, "blue")} ${a.available_for_projects
-        ? badge("available", "mint") : badge("ring-fenced", "text-faint")} ${nudge}</div>
+        ? badge("available", "mint") : badge("ring-fenced", "text-faint")} ${emma} ${nudge}</div>
     </div>
     ${money(a.balance)}`);
 }
@@ -254,13 +263,14 @@ function card(record, entity, inner, extraCls = "") {
 //  Sections
 // ============================================================================
 function section(id, title, subtitle, bodyHtml, opts = {}) {
+  const action = opts.action || "";
   const addBtn = opts.noAdd ? "" :
     `<button class="sec-add" data-add="${id}"><i data-lucide="plus"></i></button>`;
   const totals = opts.totals ? `<div class="sec-totals">${opts.totals}</div>` : "";
   return `<section class="fsection">
     <div class="sec-head">
       <div><div class="eyebrow">${title}</div>${subtitle ? `<p class="sec-sub">${subtitle}</p>` : ""}</div>
-      ${addBtn}
+      <div class="sec-actions">${action}${addBtn}</div>
     </div>
     ${totals}
     <div class="sec-body">${bodyHtml}</div>
@@ -283,6 +293,10 @@ function render() {
     : empty("No accounts yet.");
   const accountsTotals = state.accounts.length
     ? `${badge("available " + fmtGBP(avail), "mint")} ${badge("ring-fenced " + fmtGBP(ring), "text-faint")}` : "";
+  // Emma sync button — only when a sheet is configured
+  const emmaLinked = state.accounts.some((a) => a.emma_account);
+  const syncAction = (state.settings && state.settings.emma_sheet_id && emmaLinked)
+    ? `<button class="sec-sync" data-sync="1"><i data-lucide="refresh-cw"></i>Sync Emma</button>` : "";
 
   // Recurring
   const flowsBody = state.recurring_flows.length
@@ -314,7 +328,7 @@ function render() {
     : empty("No life events yet. Mat leave, PCP end, nursery start live here.");
 
   root.innerHTML =
-    section("accounts", "Accounts", "Where money sits. Emergency & investments are ring-fenced from projects.", accountsBody, { totals: accountsTotals }) +
+    section("accounts", "Accounts", "Where money sits. Emergency & investments are ring-fenced from projects.", accountsBody, { totals: accountsTotals, action: syncAction }) +
     section("recurring_flows", "Recurring", "Monthly income and outgoings.", flowsBody) +
     section("salary_changes", "Salary changes", "Step-changes that aren't just annual uplifts.", salaryBody, salaryOpts) +
     section("bonuses", "Bonuses", "Lumpy annual income, weighted by confidence.", bonusBody) +
@@ -336,6 +350,22 @@ function render() {
       const rec = state.life_events.find((r) => r.id === b.dataset.decide);
       if (rec) edit("life_events", rec);
     });
+  const syncBtn = root.querySelector("[data-sync]");
+  if (syncBtn) syncBtn.onclick = async () => {
+    syncBtn.disabled = true;
+    syncBtn.innerHTML = `<i data-lucide="loader"></i>Syncing…`;
+    window.lucide && lucide.createIcons({ nameAttr: "data-lucide" });
+    try {
+      const { updated, txnCount } = await syncBalancesFromEmma();
+      // loadAll() inside sync triggers a re-render via subscribe; flash a note
+      console.log(`Emma sync: ${updated} account(s) from ${txnCount} transactions`);
+    } catch (err) {
+      alert("Emma sync failed: " + err.message);
+      syncBtn.disabled = false;
+      syncBtn.innerHTML = `<i data-lucide="refresh-cw"></i>Sync Emma`;
+      window.lucide && lucide.createIcons({ nameAttr: "data-lucide" });
+    }
+  };
   window.lucide && lucide.createIcons({ nameAttr: "data-lucide" });
 }
 
