@@ -201,29 +201,43 @@ function txRow(t) {
     <span class="rc-txamt">${fmtGBP(Math.abs(t.amount))}</span></div>`;
 }
 
-function catRow(g, c) {
-  const path = `c:${g.kind}:${g.name}:${c.name}`;
+// A known-figure line = one recurring flow, green (received) or red (due).
+function flowLine(g, line) {
+  const path = `l:${g.kind}:${g.name}:${line.id}`;
+  const canExpand = line.txns.length > 0;
+  const open = canExpand && rcExpanded.has(path);
+  const word = g.kind === "income"
+    ? (line.received ? "received" : "not in")
+    : (line.received ? "paid" : "due");
+  const tag = `<span class="rc-tag ${line.received ? "mint" : "coral"}">${word}</span>`;
+  const nums = line.received
+    ? `<b style="color:var(--mint)">${fmtGBP(line.actual)}</b> <span class="rc-exp">/ ${fmtGBP(line.expected)}</span>`
+    : `<b style="color:var(--coral)">${fmtGBP(line.expected)}</b>`;
+  const chev = canExpand
+    ? `<i data-lucide="chevron-${open ? "down" : "right"}" class="rc-chev"></i>`
+    : `<span class="rc-chev"></span>`;
+  const txns = open ? `<div class="rc-txs">${line.txns.map(txRow).join("")}</div>` : "";
+  return `<div class="rc-cat ${open ? "open" : ""}">
+    <div class="rc-crow">
+      <button class="rc-chead" data-rc="${encodeURIComponent(path)}">
+        ${chev}<span class="rc-cname">${line.name}</span>${tag}<span class="rc-nums">${nums}</span>
+      </button>
+      <button class="rc-edit" data-flow="${line.id}" title="Edit recurring flow"><i data-lucide="pencil"></i></button>
+    </div>${txns}</div>`;
+}
+
+// A General-Expenses category line — actual spend, expand to its transactions.
+function genCatRow(g, c) {
+  const path = `c:${g.name}:${c.name}`;
   const open = rcExpanded.has(path);
-  const flow = c.flows[0];
-  const pending = c.flows.some((f) => f.landed === false);
-  const landedAll = c.flows.length && c.flows.every((f) => f.landed === true);
-  const status = !c.flows.length ? ""
-    : pending ? `<span class="rc-tag amber">to come</span>`
-    : landedAll ? `<span class="rc-tag mint">landed</span>` : "";
-  const nums = c.expected
-    ? `<b style="color:var(--${c.over ? "coral" : "mint"})">${fmtGBP(c.actual)}</b> / ${fmtGBP(c.expected)}`
-    : `<b>${fmtGBP(c.actual)}</b>`;
-  const edit = flow
-    ? `<button class="rc-edit" data-flow="${flow.id}" title="Edit recurring flow"><i data-lucide="pencil"></i></button>` : "";
-  const txns = open && c.txns.length
-    ? `<div class="rc-txs">${c.txns.map(txRow).join("")}</div>` : "";
+  const txns = open ? `<div class="rc-txs">${c.txns.map(txRow).join("")}</div>` : "";
   return `<div class="rc-cat ${open ? "open" : ""}">
     <div class="rc-crow">
       <button class="rc-chead" data-rc="${encodeURIComponent(path)}">
         <i data-lucide="chevron-${open ? "down" : "right"}" class="rc-chev"></i>
-        <span class="rc-cname">${c.name}</span>${status}
-        <span class="rc-nums">${nums}</span>
-      </button>${edit}
+        <span class="rc-cname">${c.name}</span>
+        <span class="rc-nums"><b>${fmtGBP(c.actual)}</b></span>
+      </button>
     </div>${txns}</div>`;
 }
 
@@ -236,19 +250,22 @@ function groupRow(g) {
     ? (g.pendingExpected > 0 ? "amber" : "mint")
     : (g.over ? "coral" : "mint");
   const right = `<b style="color:var(--${numTint})">${fmtGBP(g.actual)}</b>${g.expected ? ` / ${fmtGBP(g.expected)}` : ""}`;
-  const note = g.pendingExpected > 0
-    ? `<span class="rc-tag amber">${fmtGBP(g.pendingExpected)} to come</span>`
-    : g.over ? `<span class="rc-tag coral">over</span>`
-    : g.isBudget ? `<span class="rc-tag mint">within</span>` : "";
+  const note = g.over ? `<span class="rc-tag coral">over</span>`
+    : g.pendingExpected > 0
+      ? `<span class="rc-tag amber">${fmtGBP(g.pendingExpected)} ${g.kind === "income" ? "to come" : "due"}</span>`
+    : g.type === "budget" ? `<span class="rc-tag mint">within</span>` : "";
   const bar = g.expected > 0
     ? `<div class="rc-bar"><span style="width:${pct}%;background:var(--${tint})"></span></div>` : "";
-  const cats = open ? `<div class="rc-cats">${g.categories.map((c) => catRow(g, c)).join("")}</div>` : "";
+  const inner = g.type === "budget"
+    ? g.categories.map((c) => genCatRow(g, c)).join("")
+    : g.lines.map((l) => flowLine(g, l)).join("");
+  const body = open ? `<div class="rc-cats">${inner}</div>` : "";
   return `<div class="rc-grp ${open ? "open" : ""}">
     <button class="rc-ghead" data-rc="${encodeURIComponent(path)}">
       <i data-lucide="chevron-${open ? "down" : "right"}" class="rc-chev"></i>
       <span class="rc-gname">${g.name}</span>${note}
       <span class="rc-gnums">${right}</span>
-    </button>${bar}${cats}</div>`;
+    </button>${bar}${body}</div>`;
 }
 
 function buildReconcile() {
@@ -263,7 +280,6 @@ function buildReconcile() {
     const r = reconcileMonth({
       month, txns: rcFeed.txns,
       recurring_flows: state.recurring_flows,
-      categories: state.categories,
       category_rules: state.category_rules,
       budgets: (state.settings && state.settings.forecast_budgets) || {},
       excluded: buildExcludedSet(state.categories),

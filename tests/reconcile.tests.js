@@ -19,131 +19,133 @@ const tx = (name, amount, dateInt, category) => ({ customName: name, amount, dat
 const MONTH = "2026-08";
 const gExp = (res, name) => res.expense.find((g) => g.name === name);
 const gInc = (res, name) => res.income.find((g) => g.name === name);
+const lineOf = (g, name) => g && g.lines.find((l) => l.name === name);
 const catOf = (g, name) => g && g.categories.find((c) => c.name === name);
 
-// ---- 1. bill group: expected from flow, actual from txn, landed ------------
+// ---- 1. income group: one salary in (green), one not (red) -----------------
+{
+  const txns = [tx("ASAHI UK LTD, 88005366", 2900, di(2026, 8, 28), "Salary")];
+  const res = reconcileMonth({
+    month: MONTH, txns,
+    recurring_flows: [
+      { id: "l", name: "Lachlan Salary", kind: "income", amount: 2900, category: "Salary", emma_match_key: "ASAHI UK LTD, 88005366" },
+      { id: "c", name: "Christine Salary", kind: "income", amount: 3200, category: "Salary", emma_match_key: "MACFARLANES LLP, ." },
+    ],
+  });
+  const g = gInc(res, "Income");
+  ok(!!g, "single Income group built");
+  if (g) {
+    eq(g.expected, 6100, "Income expected = both salaries");
+    eq(g.actual, 2900, "Income actual = the salary that landed");
+    eq(g.pendingExpected, 3200, "Christine's salary is still pending");
+    eq(g.lines.length, 2, "two salary lines");
+    eq(lineOf(g, "Lachlan Salary").received, true, "Lachlan received (green)");
+    eq(lineOf(g, "Christine Salary").received, false, "Christine not received (red)");
+    eq(lineOf(g, "Lachlan Salary").actual, 2900, "received line shows actual");
+  }
+}
+
+// ---- 2. expense bills grouped by flow category, paid vs due ----------------
+{
+  const txns = [tx("BigBank Mortgage", -1200, di(2026, 8, 3), "Mortgage")];
+  const res = reconcileMonth({
+    month: MONTH, txns,
+    recurring_flows: [
+      { id: "m", name: "Mortgage", kind: "expense", amount: 1200, category: "Housing", emma_match_key: "BigBank Mortgage" },
+      { id: "ct", name: "Council tax", kind: "expense", amount: 200, category: "Housing", emma_match_key: "Council" },
+      { id: "car", name: "PCP", kind: "expense", amount: 350, category: "Vehicle", emma_match_key: "VW Finance" },
+    ],
+  });
+  const h = gExp(res, "Housing");
+  ok(!!h, "Housing group built from flow.category");
+  if (h) {
+    eq(h.expected, 1400, "Housing expected = both bills");
+    eq(h.actual, 1200, "Housing actual = mortgage paid");
+    eq(h.pendingExpected, 200, "council tax still due");
+    eq(lineOf(h, "Mortgage").received, true, "mortgage paid");
+    eq(lineOf(h, "Council tax").received, false, "council tax due");
+  }
+  ok(!!gExp(res, "Vehicle"), "separate Vehicle group for the PCP");
+}
+
+// ---- 3. General = counting outflows NOT matched to a known bill ------------
 {
   const txns = [
-    tx("BigBank Mortgage", -1200, di(2026, 8, 3), "Mortgage"),
-    tx("Council", -180, di(2026, 8, 5), "Council Tax"),
+    tx("BigBank Mortgage", -1200, di(2026, 8, 3), "Mortgage"),   // known bill → NOT general
+    tx("Deliveroo", -40, di(2026, 8, 4), "Eating out"),
+    tx("Amazon", -60, di(2026, 8, 6), "Shopping"),
+    tx("Amazon", -25, di(2026, 8, 9), "Shopping"),
   ];
   const res = reconcileMonth({
     month: MONTH, txns,
     recurring_flows: [
-      { id: "f1", name: "Mortgage", kind: "expense", amount: 1200, emma_match_key: "BigBank Mortgage" },
-      { id: "f2", name: "Council tax", kind: "expense", amount: 200, emma_match_key: "Council" },
-    ],
-    categories: [
-      { name: "Mortgage", forecast_group: "Housing" },
-      { name: "Council Tax", forecast_group: "Housing" },
-    ],
-  });
-  const g = gExp(res, "Housing");
-  ok(!!g, "Housing group built");
-  if (g) {
-    eq(g.expected, 1400, "Housing expected = sum of flows");
-    eq(g.actual, 1380, "Housing actual = sum of txns");
-    eq(g.pendingExpected, 0, "both bills landed → nothing pending");
-    eq(g.over, false, "actual under expected → not over");
-    eq(g.categories.length, 2, "two categories under Housing");
-    const c = catOf(g, "Mortgage");
-    eq(c.flows[0].landed, true, "mortgage flow landed (txn present)");
-    eq(c.txns.length, 1, "mortgage category has its txn");
-  }
-}
-
-// ---- 2. income group: salary NOT landed → pending --------------------------
-{
-  const res = reconcileMonth({
-    month: MONTH, txns: [],   // nothing has landed yet this month
-    recurring_flows: [
-      { id: "s1", name: "Lachlan Salary", kind: "income", amount: 3200, emma_match_key: "ASAHI UK LTD, 88005366" },
-    ],
-    categories: [],
-  });
-  const g = gInc(res, "Lachlan Salary");
-  ok(!!g, "income group built even with no txns");
-  if (g) {
-    eq(g.expected, 3200, "salary expected");
-    eq(g.actual, 0, "salary not landed → actual 0");
-    eq(g.pendingExpected, 3200, "unlanded salary is pending");
-    eq(g.categories[0].flows[0].landed, false, "flow flagged not landed");
-  }
-}
-
-// ---- 3. budget group: expected = budget, over when spend exceeds -----------
-{
-  const txns = [
-    tx("Tesco", -300, di(2026, 8, 2), "Food"),
-    tx("Deliveroo", -120, di(2026, 8, 4), "Eating out"),
-    tx("ASOS", -90, di(2026, 8, 6), "Clothes"),
-  ];
-  const res = reconcileMonth({
-    month: MONTH, txns,
-    recurring_flows: [],
-    categories: [
-      { name: "Food", forecast_group: "General Expenses" },
-      { name: "Eating out", forecast_group: "General Expenses" },
-      { name: "Clothes", forecast_group: "General Expenses" },
+      { id: "m", name: "Mortgage", kind: "expense", amount: 1200, category: "Housing", emma_match_key: "BigBank Mortgage" },
     ],
     budgets: { "General Expenses": 400 },
   });
   const g = gExp(res, "General Expenses");
-  ok(!!g, "budget group built");
+  ok(!!g, "General Expenses group built");
   if (g) {
-    eq(g.isBudget, true, "flagged as budget group");
-    eq(g.expected, 400, "expected = the budget, not a flow sum");
-    eq(g.actual, 510, "actual = all discretionary spend");
-    eq(g.over, true, "spend > budget → over");
-    eq(g.categories.length, 3, "folds the three categories in");
+    eq(g.type, "budget", "General is the budget group");
+    eq(g.expected, 400, "expected = the budget");
+    eq(g.actual, 125, "actual = discretionary spend only (mortgage excluded)");
+    eq(g.over, false, "125 < 400 → not over");
+    eq(catOf(g, "Shopping").actual, 85, "Amazon spend rolled into its category");
+    eq(catOf(g, "Shopping").txns.length, 2, "category keeps its transactions");
   }
+  ok(res.expense[res.expense.length - 1].name === "General Expenses", "General sits last");
 }
 
-// ---- 4. excluded (non-counting) categories are skipped ---------------------
+// ---- 4. General over budget flags red --------------------------------------
+{
+  const res = reconcileMonth({
+    month: MONTH,
+    txns: [tx("Tesco", -520, di(2026, 8, 2), "Food")],
+    recurring_flows: [],
+    budgets: { "General Expenses": 400 },
+  });
+  eq(gExp(res, "General Expenses").over, true, "spend > budget → over");
+}
+
+// ---- 5. excluded (non-counting) categories skipped everywhere --------------
 {
   const txns = [
-    tx("Transfer to savings", -8884, di(2026, 8, 10), "Transfers"),
+    tx("Transfer", -8884, di(2026, 8, 10), "Transfers"),
     tx("Tesco", -50, di(2026, 8, 11), "Food"),
   ];
   const res = reconcileMonth({
-    month: MONTH, txns,
-    recurring_flows: [],
-    categories: [{ name: "Food", forecast_group: "General Expenses" }],
+    month: MONTH, txns, recurring_flows: [],
     budgets: { "General Expenses": 400 },
     excluded: new Set(["Transfers", "Excluded"]),
   });
-  const g = gExp(res, "General Expenses");
-  eq(g.actual, 50, "transfer excluded from spend actual");
-  ok(!res.expense.some((x) => x.name === "Transfers"), "no Transfers group created");
+  eq(gExp(res, "General Expenses").actual, 50, "transfer excluded from General");
 }
 
-// ---- 5. category with no forecast_group is its own line --------------------
+// ---- 6. flow without a match key → never received (red) --------------------
 {
-  const txns = [tx("Vet", -240, di(2026, 8, 8), "Pets")];
   const res = reconcileMonth({
-    month: MONTH, txns, recurring_flows: [], categories: [],
+    month: MONTH, txns: [], recurring_flows: [
+      { id: "x", name: "Gym", kind: "expense", amount: 40, category: "Other" },
+    ],
   });
-  const g = gExp(res, "Pets");
-  ok(!!g, "ungrouped category becomes its own group line");
-  if (g) eq(g.actual, 240, "own-line actual");
+  eq(lineOf(gExp(res, "Other"), "Gym").received, false, "unlinked flow shows due");
 }
 
-// ---- 6. only-this-month + only-active flows are considered -----------------
+// ---- 7. only this-month + active flows/txns are considered -----------------
 {
   const txns = [
-    tx("Gym", -40, di(2026, 7, 15), "Fitness"),  // last month — ignored
-    tx("Gym", -40, di(2026, 8, 15), "Fitness"),  // this month
+    tx("Netflix", -11, di(2026, 7, 15), "Subscriptions"),  // last month — ignored
+    tx("Netflix", -11, di(2026, 8, 15), "Subscriptions"),  // this month
   ];
   const res = reconcileMonth({
     month: MONTH, txns,
     recurring_flows: [
-      { id: "old", name: "Old sub", kind: "expense", amount: 99, end_month: "2026-06", emma_match_key: "Old" },
+      { id: "old", name: "Old sub", kind: "expense", amount: 99, category: "Other", end_month: "2026-06", emma_match_key: "Old" },
     ],
-    categories: [],
+    budgets: { "General Expenses": 100 },
   });
-  const g = gExp(res, "Fitness");
-  eq(g.actual, 40, "only this-month txn counts");
-  ok(!res.expense.some((x) => x.name === "Old sub" || x.name === "Old"), "ended flow excluded");
+  eq(gExp(res, "General Expenses").actual, 11, "only this-month txn counts in General");
+  ok(!res.expense.some((g) => g.name === "Other"), "ended flow excluded (no Other group)");
 }
 
 // ---- summary ---------------------------------------------------------------
