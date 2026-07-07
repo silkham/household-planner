@@ -8,6 +8,9 @@ import { mountForecast } from "./forecast.js";
 import { mountSpending } from "./spending.js";
 import { mountTasks } from "./tasks.js";
 import { openSettings } from "./settings.js";
+import { APP_VERSION, BUILD_DATE } from "./version.js";
+
+console.log(`HouseholdOS Planner v${APP_VERSION} (built ${BUILD_DATE})`);
 
 /* ---- Nav ---- */
 const TABS = [

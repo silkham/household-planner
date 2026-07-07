@@ -7,6 +7,7 @@
 // ============================================================================
 import { state, saveSettings } from "./store.js";
 import { openSheet, fmtGBP, fmtMonth } from "./sheet.js";
+import { APP_VERSION, BUILD_DATE } from "./version.js";
 
 const SCEN = [
   { label: "Conservative", value: "conservative" },
@@ -64,7 +65,10 @@ function renderExtra(box) {
       <p class="fld-help" style="margin-top:8px">To model mat leave or a pay drop, add a life event under Finances and link it to a salary — it will lower that salary for the period.</p>
 
       <div class="pi-head" style="margin-top:20px"><span class="eyebrow">Integrations</span></div>
-      <p class="fld-help" style="margin:2px 0 8px">Read-only imports. Not live yet — config is saved for when they land.</p>`;
+      <p class="fld-help" style="margin:2px 0 8px">Read-only imports. Not live yet — config is saved for when they land.</p>
+
+      <div class="pi-head" style="margin-top:20px"><span class="eyebrow">About</span></div>
+      <p class="fld-help" style="margin:2px 0">HouseholdOS Planner · <b>v${APP_VERSION}</b> · built ${BUILD_DATE}</p>`;
 
     box.querySelector("[data-addsalary]").onclick = () => editSalary({}, rebuild);
     box.querySelectorAll("[data-flow]").forEach((r) =>
