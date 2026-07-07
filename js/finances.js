@@ -5,13 +5,24 @@
 import { state, subscribe } from "./store.js";
 import { openSheet, fmtGBP, fmtMonth } from "./sheet.js";
 import { monthlyPayment } from "./engine.js";
-import { syncBalancesFromEmma } from "./emma.js";
+import { syncBalancesFromEmma, cachedEmmaTxns } from "./emma.js";
 import { mountDetected } from "./recurring.js";
+import { categoryNames } from "./categories.js";
 
 // ---- option lists ----------------------------------------------------------
 const opt = (arr) => arr.map((v) => ({ label: v, value: v }));
 const ACCOUNT_KINDS = opt(["current", "savings", "emergency", "investment", "other"]);
-const FLOW_CATS = opt(["Salary","Housing","Childcare","Vehicle","Utilities","Groceries","Loan","Other"]);
+// Base flow buckets, always offered even before any spend is categorised.
+const FLOW_CAT_BASE = ["Salary","Housing","Childcare","Vehicle","Utilities","Groceries","Loan","Other"];
+// Category dropdown for a recurring flow = base buckets ∪ the managed/Emma
+// categories the Spending tab shows, so the two lists stay in step.
+const flowCatOptions = () => {
+  const rules = new Map(state.category_rules.map((r) => [r.match_key, r.category]));
+  const seen = new Map(FLOW_CAT_BASE.map((n) => [n.toLowerCase(), n]));
+  for (const n of categoryNames(state.categories, cachedEmmaTxns(), rules))
+    if (!seen.has(n.toLowerCase())) seen.set(n.toLowerCase(), n);
+  return [...seen.values()].sort((a, b) => a.localeCompare(b)).map((v) => ({ label: v, value: v }));
+};
 const CONFIDENCE = opt(["confirmed", "likely", "speculative"]);
 const FIN_STATUS = opt(["considering", "active", "declined", "repaid"]);
 const EVENT_TYPES = [
@@ -70,7 +81,7 @@ const SCHEMAS = {
       { key: "name", label: "Name", type: "text", placeholder: "Mortgage" },
       { key: "kind", label: "Type", type: "segmented", options: KIND_SEG },
       { key: "amount", label: "Monthly £ (net)", type: "money", step: "10" },
-      { key: "category", label: "Category", type: "select", options: FLOW_CATS },
+      { key: "category", label: "Category", type: "select", options: flowCatOptions },
       { key: "start_month", label: "Start month", type: "month" },
       { key: "end_month", label: "End month (optional)", type: "month" },
       { key: "annual_uplift_pct", label: "Annual uplift %", type: "percent", step: "0.5", help: "e.g. 3 for a 3% yearly rise" },

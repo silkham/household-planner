@@ -94,6 +94,11 @@ function renderField(f, draft, onChange) {
       input = el("select", "field");
       const opts = typeof f.options === "function" ? f.options() : f.options;
       if (f.placeholder) input.appendChild(new Option(f.placeholder, ""));
+      // Keep a current value that isn't in the option list (e.g. a legacy
+      // category) so saving an untouched select never silently changes it.
+      const cur = draft[f.key];
+      if (cur != null && cur !== "" && !opts.some((o) => o.value === cur))
+        input.appendChild(new Option(cur, cur));
       for (const o of opts) input.appendChild(new Option(o.label, o.value));
       input.value = draft[f.key] ?? "";
       input.onchange = () => setVal(input.value || null);

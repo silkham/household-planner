@@ -32,6 +32,9 @@ function isoDateInt(s) {
 // refresh (Spending's Refresh button + syncBalancesFromEmma do).
 let _feedCache = null;
 export function clearEmmaCache() { _feedCache = null; }
+// Synchronous peek at the already-fetched feed (empty until fetchEmma runs).
+// Lets option-lists reuse the memoised txns without going async.
+export function cachedEmmaTxns() { return (_feedCache && _feedCache.txns) || []; }
 
 export async function fetchEmma(force = false) {
   if (_feedCache && !force) return _feedCache;
