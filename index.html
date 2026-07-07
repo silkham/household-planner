@@ -236,6 +236,7 @@ main { flex: 1; padding: 20px 18px 108px; }
   .aurora .blob { animation: none !important; }
   .screen.active > * { animation: none !important; }
   .spark-line, .spark-area, .pt-danger { animation: none !important; stroke-dashoffset: 0 !important; opacity: 1 !important; }
+  .sp-barfill { animation: none !important; transform: none !important; }
   * { scroll-behavior: auto !important; }
 }
 
@@ -473,6 +474,36 @@ main { flex: 1; padding: 20px 18px 108px; }
 @media (min-width: 860px) { .cf-card { padding: 18px 16px 8px; } }
 
 /* ============================================================= *
+ *  Spending tab                                                 *
+ * ============================================================= */
+.sp-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.sp-chart { width: 100%; height: auto; display: block; overflow: visible; }
+.sp-barfill { animation: barGrow .5s var(--ease) forwards; }
+@keyframes barGrow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+.sp-selhead { display: flex; align-items: baseline; justify-content: space-between; margin: 4px 2px 10px; }
+.sp-selmon { font-family: var(--font-head); font-weight: 500; font-size: 16px; }
+.sp-seltot { font-variant-numeric: tabular-nums; color: var(--text-dim); font-size: 13px; }
+.sp-cats { display: flex; flex-direction: column; gap: 6px; }
+.sp-catrow { border: 1px solid var(--hairline); border-radius: var(--r-ctrl); background: var(--card); overflow: hidden; }
+.sp-cathead { width: 100%; display: grid; grid-template-columns: minmax(84px,1.1fr) 2fr auto 16px; align-items: center;
+  gap: 10px; padding: 11px 14px; background: none; border: none; cursor: pointer; font-family: var(--font-body); color: var(--text); }
+.sp-catname { text-align: left; font-weight: 600; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sp-catbar { height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--blue) 16%, transparent); overflow: hidden; }
+.sp-catbar span { display: block; height: 100%; background: var(--blue); border-radius: 3px; transition: width var(--dur-2) var(--ease); }
+.sp-catamt { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; font-size: 13.5px; }
+.sp-chev { width: 16px; height: 16px; color: var(--text-faint); }
+.sp-tx { width: 100%; display: grid; grid-template-columns: 1fr auto auto 16px; align-items: center; gap: 10px;
+  padding: 9px 14px; background: none; border: none; border-top: 1px solid var(--hairline); cursor: pointer;
+  font-family: var(--font-body); color: var(--text-dim); }
+.sp-tx:hover { background: color-mix(in srgb, var(--mint) 6%, transparent); }
+.sp-tx-name { text-align: left; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sp-tx-date { font-size: 11px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.sp-tx-amt { text-align: right; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.sp-tx i { width: 14px; height: 14px; color: var(--text-faint); }
+.sp-load { margin-top: 8px; padding: 9px 16px; border-radius: var(--r-ctrl); border: 1px solid var(--hairline);
+  background: var(--card); color: var(--text); cursor: pointer; font-family: var(--font-body); }
+
+/* ============================================================= *
  *  Bottom sheet + form controls                                *
  * ============================================================= */
 .sheet-overlay {
@@ -574,6 +605,11 @@ select.field { appearance: none; background-image:
       <!-- Forecast -->
       <section class="screen active" data-screen="forecast">
         <div id="forecast-root"></div>
+      </section>
+
+      <!-- Spending -->
+      <section class="screen" data-screen="spending">
+        <div id="spending-root"></div>
       </section>
 
       <!-- Projects -->

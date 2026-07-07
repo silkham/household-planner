@@ -5,12 +5,14 @@ import { supa, resolveHousehold, loadAll, seedIfEmpty } from "./store.js";
 import { mountFinances } from "./finances.js";
 import { mountProjects } from "./projects.js";
 import { mountForecast } from "./forecast.js";
+import { mountSpending } from "./spending.js";
 import { mountTasks } from "./tasks.js";
 import { openSettings } from "./settings.js";
 
 /* ---- Nav ---- */
 const TABS = [
   { id: "forecast", label: "Forecast", icon: "line-chart" },
+  { id: "spending", label: "Spending", icon: "receipt" },
   { id: "projects", label: "Projects", icon: "hammer" },
   { id: "finances", label: "Finances", icon: "wallet" },
   { id: "tasks",    label: "Tasks",    icon: "list-checks" },
@@ -88,6 +90,7 @@ async function onSession(session) {
       await loadAll();      // pull whatever exists
       await seedIfEmpty();  // idempotent placeholders on first open
       mountForecast();
+      mountSpending();
       mountFinances();
       mountProjects();
       mountTasks();

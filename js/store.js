@@ -37,12 +37,13 @@ export async function resolveHousehold() {
 const TABLES = [
   "accounts", "recurring_flows", "salary_changes", "bonuses",
   "financing_options", "life_events", "projects", "project_items",
+  "category_rules",
 ];
 
 export const state = {
   accounts: [], recurring_flows: [], salary_changes: [], bonuses: [],
   financing_options: [], life_events: [], projects: [], project_items: [],
-  settings: null,
+  category_rules: [], settings: null,
 };
 
 const subs = new Set();
