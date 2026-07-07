@@ -104,10 +104,22 @@ async function onSession(session) {
   }
 }
 
-/* ---- Service worker (offline + installable) ---- */
+/* ---- Service worker (offline + installable) ----
+   Register as sw.js?v=<version> so a version bump = a new SW = fresh cache.
+   When a NEW sw takes control (update after a deploy), reload once so the
+   latest assets load. Skip the reload on first-ever install (no prior
+   controller) to avoid a needless refresh on first visit. */
 if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () =>
-    navigator.serviceWorker.register("sw.js").catch(() => {}));
+  window.addEventListener("load", () => {
+    const hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.register("sw.js?v=" + APP_VERSION).catch(() => {});
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (!hadController || reloaded) return;
+      reloaded = true;
+      window.location.reload();
+    });
+  });
 }
 
 /* ---- Boot ---- */
