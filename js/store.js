@@ -101,6 +101,21 @@ export async function bulkReassignRules(rules, deleteCategoryId) {
   await loadAll();
 }
 
+// Upsert ONE category rule on its natural key (household_id, match_key). The
+// merchant string is the real identity, so this never hits a duplicate-key
+// error even when local state is stale or an existing rule was keyed on a
+// different identity field (multi-field matching). Use this instead of a
+// find-by-match_key-then-insert-or-update dance.
+export async function saveCategoryRule(match_key, category) {
+  const hid = await resolveHousehold();
+  const { data, error } = await HP.from("category_rules")
+    .upsert({ household_id: hid, match_key, category }, { onConflict: "household_id,match_key" })
+    .select();
+  if (error) throw error;
+  await loadAll();
+  return data && data[0];
+}
+
 // settings is a singleton keyed on household_id (no `id`), so it needs its own
 // save path — upsert on the PK rather than the generic id-based saveRow.
 export async function saveSettings(patch) {

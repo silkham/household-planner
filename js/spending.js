@@ -5,7 +5,7 @@
 //  a `category_rules` row (keyed on the merchant's `Custom Name`) overrides it.
 //  Nothing here feeds the cashflow engine — this is the "where did it go?" view.
 // ============================================================================
-import { state, subscribe, saveRow } from "./store.js";
+import { state, subscribe, saveRow, saveCategoryRule } from "./store.js";
 import { fetchEmma } from "./emma.js";
 import { openSheet, fmtGBP, fmtMonth } from "./sheet.js";
 import { buildExcludedSet, categoryNames, categoryManagerHtml, wireCategoryManager, txnKey, effectiveCategory } from "./categories.js";
@@ -214,7 +214,10 @@ function categorise(key, currentCat) {
           await saveRow("categories", { name: fresh, counts_as_spend: true, sort_order: 99 });
       }
       if (!cat) throw new Error("Pick or add a category.");
-      await saveRow("category_rules", { ...(existing ? { id: existing.id } : {}), match_key: key, category: cat });
+      // Upsert on (household_id, match_key) — a rule for this merchant may
+      // already exist (keyed on a different identity field / stale state), so a
+      // plain insert would hit idx_hp_catrules_key. Upsert is collision-proof.
+      await saveCategoryRule(key, cat);
     },
     onDone: render,
   });

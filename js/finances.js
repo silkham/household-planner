@@ -2,7 +2,7 @@
 //  finances.js — the Finances tab. Six sections, each backed by a table and
 //  the shared bottom-sheet. Field schemas are data-driven; cards are per-type.
 // ============================================================================
-import { state, subscribe, saveRow } from "./store.js";
+import { state, subscribe, saveRow, saveCategoryRule } from "./store.js";
 import { openSheet, fmtGBP, fmtMonth } from "./sheet.js";
 import { monthlyPayment } from "./engine.js";
 import { syncBalancesFromEmma, cachedEmmaTxns } from "./emma.js";
@@ -127,13 +127,8 @@ const SCHEMAS = {
     save: async (clean) => {
       clean.interval_n = Number(clean.interval_n) || 1;   // select yields a string
       await saveRow("recurring_flows", clean);
-      if (clean.emma_match_key && clean.category) {
-        const existing = state.category_rules.find((r) => r.match_key === clean.emma_match_key);
-        await saveRow("category_rules", {
-          ...(existing ? { id: existing.id } : {}),
-          match_key: clean.emma_match_key, category: clean.category,
-        });
-      }
+      if (clean.emma_match_key && clean.category)
+        await saveCategoryRule(clean.emma_match_key, clean.category);   // upsert on match_key (collision-proof)
     },
   },
 
