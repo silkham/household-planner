@@ -8,6 +8,7 @@
 //  stays server-side). The engine + Finances keep reading accounts.balance.
 // ============================================================================
 import { supa, HP, state, loadAll } from "./store.js";
+import { effectiveCategory } from "./categories.js";
 
 // "M/D/YYYY" -> yyyymmdd int (comparable), or null
 function usDateInt(s) {
@@ -77,25 +78,43 @@ export async function fetchEmma(force = false) {
 // Returns { updated, txnCount }.
 export async function syncBalancesFromEmma() {
   const { txns } = await fetchEmma(true);  // force a fresh pull on explicit sync
-  const mapped = state.accounts.filter((a) => a.emma_account && a.anchor_balance != null);
+  const rules = new Map(state.category_rules.map((r) => [r.match_key, r.category]));
 
-  const writes = mapped.map((a) => {
+  // Emma-fed accounts: balance = anchor + SUM(own-account txns after anchor).
+  const emmaMapped = state.accounts.filter((a) => a.emma_account && a.anchor_balance != null);
+  // Contribution-fed accounts (investments/savings with no feed of their own):
+  // balance = anchor + SUM(−amount for txns whose effective category matches).
+  // A transfer OUT of a current account is a −£ txn there, so −amount tops this
+  // account up; a withdrawal (+£ in the current feed) nets back out. Multi-field
+  // category matching means a single re-tag of the transfer merchant sticks.
+  const contribMapped = state.accounts.filter(
+    (a) => a.contrib_category && !a.emma_account && a.anchor_balance != null);
+
+  const afterAnchor = (a, t) => {
     const anchorInt = isoDateInt(a.anchor_date);
+    return anchorInt == null || (t.dateInt != null && t.dateInt > anchorInt);
+  };
+  const commit = (a, delta) => HP.from("accounts")
+    .update({ balance: Math.round((Number(a.anchor_balance) + delta) * 100) / 100,
+              balance_updated_at: new Date().toISOString() })
+    .eq("id", a.id);
+
+  const writes = [];
+  for (const a of emmaMapped) {
     let delta = 0;
-    for (const t of txns) {
-      if (t.account !== a.emma_account) continue;
-      // strictly after the anchor date — the anchor already includes that day
-      if (anchorInt != null && (t.dateInt == null || t.dateInt <= anchorInt)) continue;
-      delta += t.amount;
-    }
-    const balance = Math.round((Number(a.anchor_balance) + delta) * 100) / 100;
-    return HP.from("accounts")
-      .update({ balance, balance_updated_at: new Date().toISOString() })
-      .eq("id", a.id);
-  });
+    for (const t of txns)
+      if (t.account === a.emma_account && afterAnchor(a, t)) delta += t.amount;
+    writes.push(commit(a, delta));
+  }
+  for (const a of contribMapped) {
+    let delta = 0;
+    for (const t of txns)
+      if (afterAnchor(a, t) && effectiveCategory(t, rules) === a.contrib_category) delta += -t.amount;
+    writes.push(commit(a, delta));
+  }
 
   const results = await Promise.all(writes);
   results.forEach((r) => { if (r.error) console.error("emma sync:", r.error.message); });
   await loadAll();
-  return { updated: mapped.length, txnCount: txns.length };
+  return { updated: emmaMapped.length + contribMapped.length, txnCount: txns.length };
 }

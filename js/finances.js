@@ -23,6 +23,11 @@ const flowCatOptions = () => {
     if (!seen.has(n.toLowerCase())) seen.set(n.toLowerCase(), n);
   return [...seen.values()].sort((a, b) => a.localeCompare(b)).map((v) => ({ label: v, value: v }));
 };
+// Non-counting categories only — an investment/savings account tops up from
+// transfers filed under one of these (e.g. "Transfer - Vanguard"). See emma.js.
+const contribCatOptions = () =>
+  state.categories.filter((c) => c.counts_as_spend === false)
+    .map((c) => ({ label: c.name, value: c.name }));
 const CONFIDENCE = opt(["confirmed", "likely", "speculative"]);
 const FIN_STATUS = opt(["considering", "active", "declined", "repaid"]);
 const EVENT_TYPES = [
@@ -53,7 +58,7 @@ const allFlows = () =>
 const SCHEMAS = {
   accounts: {
     table: "accounts", title: "Account",
-    blank: { name: "", kind: "current", balance: 0, available_for_projects: true, emma_account: null, notes: null },
+    blank: { name: "", kind: "current", balance: 0, available_for_projects: true, emma_account: null, contrib_category: null, notes: null },
     fields: [
       { key: "name", label: "Name", type: "text", placeholder: "Natwest current" },
       { key: "kind", label: "Kind", type: "select", options: ACCOUNT_KINDS },
@@ -62,6 +67,10 @@ const SCHEMAS = {
       { key: "available_for_projects", label: "Available for projects", type: "toggle" },
       { key: "emma_account", label: "Emma account name (optional)", type: "text", placeholder: "PREMIER SELECT",
         help: "Exact 'Account' name in the Emma sheet — links this account to the transaction feed." },
+      { key: "contrib_category", label: "Tops up from category (optional)", type: "select",
+        options: contribCatOptions, placeholder: "None — manual balance",
+        help: "For investments/savings: transfers filed under this category increase this balance on each Emma sync.",
+        showIf: (d) => !d.available_for_projects },
       { key: "notes", label: "Notes", type: "textarea" },
     ],
     // saving (re-)anchors the balance to today; Emma sync derives from here.

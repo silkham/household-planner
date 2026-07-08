@@ -5,5 +5,5 @@
 //  can confirm which deployed build the browser actually loaded.
 //    major.minor.patch — minor tracks a shipped phase, patch a fix/tweak.
 // ============================================================================
-export const APP_VERSION = "1.11.5";  // 1.11.5 = Spending month breakdown shows non-counting buckets (Transfers/Excluded) below the counting ones, marked "not counted" & expandable, excluded from the "spent" total
+export const APP_VERSION = "1.12.0";  // 1.12.0 = Transfer → Investment: an investment/savings account can "top up from" a non-counting category (accounts.contrib_category); emma.js sums those transfers into its balance on sync (reuses category_rules)
 export const BUILD_DATE  = "2026-07-08";
