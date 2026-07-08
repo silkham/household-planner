@@ -104,21 +104,28 @@ function buildChart(months) {
 }
 
 // ---- category rows for the selected month ----------------------------------
-function categoryRows(monthTxns, rules) {
+// Takes ALL outflows for the month. Counting categories render first with
+// proportion bars (their sum = the "£X spent" figure); non-counting buckets
+// (Transfers / Excluded) follow under a divider, marked "not counted" and
+// omitted from the proportion grand total — visible & expandable so a bill
+// swept into Transfers can be spotted and re-filed, without inflating spend.
+function categoryRows(monthOutflows, rules, excluded) {
   const groups = new Map();
-  for (const t of monthTxns) {
+  for (const t of monthOutflows) {
     const cat = effCategory(t, rules);
-    if (!groups.has(cat)) groups.set(cat, { cat, total: 0, txns: [] });
+    if (!groups.has(cat)) groups.set(cat, { cat, total: 0, txns: [], counts: !excluded.has(cat) });
     const g = groups.get(cat);
     g.total += -t.amount;   // outflow magnitude
     g.txns.push(t);
   }
-  const list = [...groups.values()].sort((a, b) => b.total - a.total);
-  const grand = list.reduce((s, g) => s + g.total, 0) || 1;
+  const all = [...groups.values()];
+  const counting = all.filter((g) => g.counts).sort((a, b) => b.total - a.total);
+  const noncount = all.filter((g) => !g.counts).sort((a, b) => b.total - a.total);
+  const grand = counting.reduce((s, g) => s + g.total, 0) || 1;
 
-  return list.map((g) => {
+  const rowHtml = (g) => {
     const isOpen = openCats.has(g.cat);
-    const pct = Math.round((g.total / grand) * 100);
+    const pct = g.counts ? Math.round((g.total / grand) * 100) : 0;
     const txRows = isOpen
       ? g.txns.slice().sort((a, b) => (b.dateInt || 0) - (a.dateInt || 0)).map((t) => `
           <button class="sp-tx" data-key="${encodeURIComponent(txKey(t))}" data-cat="${encodeURIComponent(g.cat)}">
@@ -128,14 +135,21 @@ function categoryRows(monthTxns, rules) {
             <i data-lucide="tag"></i>
           </button>`).join("")
       : "";
-    return `<div class="sp-catrow ${isOpen ? "open" : ""}">
+    return `<div class="sp-catrow ${isOpen ? "open" : ""} ${g.counts ? "" : "notcount"}">
       <button class="sp-cathead" data-cat="${encodeURIComponent(g.cat)}">
-        <span class="sp-catname">${g.cat}</span>
-        <span class="sp-catbar"><span style="width:${pct}%"></span></span>
+        <span class="sp-catname">${g.cat}${g.counts ? "" : ` <span class="sp-catoff">not counted</span>`}</span>
+        ${g.counts ? `<span class="sp-catbar"><span style="width:${pct}%"></span></span>` : `<span class="sp-catbar off"></span>`}
         <span class="sp-catamt">${fmtGBP(g.total)}</span>
         <i data-lucide="chevron-${isOpen ? "up" : "down"}" class="sp-chev"></i>
       </button>${txRows}</div>`;
-  }).join("");
+  };
+
+  const countHtml = counting.map(rowHtml).join("");
+  const nonHtml = noncount.length
+    ? `<div class="sp-notcount-div">Not counted as spend — transfers, excluded, card payments</div>`
+      + noncount.map(rowHtml).join("")
+    : "";
+  return countHtml + nonHtml;
 }
 
 // ---- "needs a category" prompt ---------------------------------------------
@@ -289,7 +303,9 @@ function render() {
       bodyHtml = promptHtml + `<div class="sec-empty">No spend transactions found in the feed.</div>`;
     } else {
       if (!selMonth || !byMonth.has(selMonth)) selMonth = months[months.length - 1].month;
-      const monthTxns = spend.filter((t) => monthOf(t.dateInt) === selMonth);
+      // ALL outflows for the month (counting + non-counting) — categoryRows
+      // splits them; the "£X spent" figure stays counting-only (byMonth).
+      const monthOutflows = txns.filter((t) => t.amount < 0 && monthOf(t.dateInt) === selMonth);
       const monthTotal = byMonth.get(selMonth) || 0;
       bodyHtml = promptHtml + `
         <div class="cf-card glass">${buildChart(months)}</div>
@@ -297,7 +313,7 @@ function render() {
           <span class="sp-selmon">${fmtMonth(selMonth)}</span>
           <span class="sp-seltot">${fmtGBP(monthTotal)} spent</span>
         </div>
-        <div class="sp-cats">${categoryRows(monthTxns, rules)}</div>`;
+        <div class="sp-cats">${categoryRows(monthOutflows, rules, excluded)}</div>`;
     }
   }
 
