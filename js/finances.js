@@ -37,6 +37,12 @@ const EVENT_TYPES = [
   { label: "Decision", value: "decision_point" },
 ];
 const KIND_SEG = [{ label: "Income", value: "income" }, { label: "Expense", value: "expense" }];
+const FREQ_SEG = [
+  { label: "Weekly", value: "weekly" }, { label: "Monthly", value: "monthly" }, { label: "Yearly", value: "yearly" },
+];
+// Interval dropdown, unit-labelled per frequency ("1 week" / "2 weeks" …).
+const intervalOpts = (unit) =>
+  Array.from({ length: 12 }, (_, i) => ({ label: `${i + 1} ${unit}${i ? "s" : ""}`, value: i + 1 }));
 
 const badge = (text, tint) =>
   `<span class="hpill" style="background:color-mix(in srgb, var(--${tint}) 16%, transparent); color:var(--${tint})">${text}</span>`;
@@ -83,13 +89,22 @@ const SCHEMAS = {
   },
 
   recurring_flows: {
-    table: "recurring_flows", title: "Recurring flow",
+    table: "recurring_flows", title: "Recurring flow", typeField: "frequency",
     blank: { name: "", kind: "expense", amount: 0, category: "Other", start_month: null,
-             end_month: null, annual_uplift_pct: null, uplift_month: 4, emma_match_key: null, notes: null },
+             end_month: null, frequency: "monthly", interval_n: 1,
+             annual_uplift_pct: null, uplift_month: 4, emma_match_key: null, notes: null },
     fields: [
       { key: "name", label: "Name", type: "text", placeholder: "Mortgage" },
       { key: "kind", label: "Type", type: "segmented", options: KIND_SEG },
-      { key: "amount", label: "Monthly £ (net)", type: "money", step: "10" },
+      { key: "amount", label: "Amount £ (net, per charge)", type: "money", step: "10",
+        help: "One charge — per week/month/year per the frequency below." },
+      { key: "frequency", label: "Frequency", type: "segmented", options: FREQ_SEG },
+      { key: "interval_n", label: "Repeat every", type: "select", options: () => intervalOpts("week"),
+        showIf: (d) => d.frequency === "weekly" },
+      { key: "interval_n", label: "Repeat every", type: "select", options: () => intervalOpts("month"),
+        showIf: (d) => (d.frequency || "monthly") === "monthly" },
+      { key: "interval_n", label: "Repeat every", type: "select", options: () => intervalOpts("year"),
+        showIf: (d) => d.frequency === "yearly" },
       { key: "category", label: "Category", type: "select", options: flowCatOptions },
       { key: "start_month", label: "Start month", type: "month" },
       { key: "end_month", label: "End month (optional)", type: "month" },
@@ -99,12 +114,18 @@ const SCHEMAS = {
       { key: "notes", label: "Notes", type: "textarea" },
       { key: "emma_match_key", type: "hidden" },  // links a detected flow back to its Emma merchant
     ],
-    impact: (d) => `${d.kind === "income" ? "+" : "−"}${fmtGBP(d.amount)}/mo from ${fmtMonth(d.start_month)}`
-      + (d.annual_uplift_pct ? ` · +${(d.annual_uplift_pct * 100).toFixed(1)}%/yr` : ""),
+    impact: (d) => {
+      const per = d.frequency === "weekly" ? "wk" : d.frequency === "yearly" ? "yr" : "mo";
+      const iv = Number(d.interval_n) || 1;
+      return `${d.kind === "income" ? "+" : "−"}${fmtGBP(d.amount)}/${per}${iv > 1 ? ` (every ${iv})` : ""}`
+        + ` from ${fmtMonth(d.start_month)}`
+        + (d.annual_uplift_pct ? ` · +${(d.annual_uplift_pct * 100).toFixed(1)}%/yr` : "");
+    },
     // Save the flow, then keep the Spending side in step: an Emma-linked flow
     // upserts a category_rule on its merchant so past & future transactions
     // re-bucket to the flow's category (the two category systems stay synced).
     save: async (clean) => {
+      clean.interval_n = Number(clean.interval_n) || 1;   // select yields a string
       await saveRow("recurring_flows", clean);
       if (clean.emma_match_key && clean.category) {
         const existing = state.category_rules.find((r) => r.match_key === clean.emma_match_key);
@@ -212,7 +233,7 @@ export function openRecurringSheet(record, onDone) {
   const s = SCHEMAS.recurring_flows;
   openSheet({
     title: record.id ? s.title : "New recurring flow",
-    table: s.table, fields: s.fields, save: s.save,
+    table: s.table, typeField: s.typeField, fields: s.fields, save: s.save,
     record: record.id ? record : { ...s.blank, ...record },
     impact: s.impact,
     onDone: () => { render(); onDone && onDone(); },

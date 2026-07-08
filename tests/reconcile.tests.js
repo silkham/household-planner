@@ -205,6 +205,41 @@ const catOf = (g, name) => g && g.categories.find((c) => c.name === name);
   ok(!!lineOf(gInc(res, "Income"), "Annual"), "recurring annual bonus matches same month next year");
 }
 
+// ---- recurring-flow cadence: a yearly bill only shows in its month ---------
+{
+  // MONTH is 2026-08. A yearly bill anchored to March should NOT appear now.
+  const res = reconcileMonth({
+    month: MONTH, txns: [],
+    recurring_flows: [
+      { id: "y", name: "Car insurance", kind: "expense", amount: 600, category: "Vehicle",
+        frequency: "yearly", interval_n: 1, start_month: "2026-03" },
+    ],
+  });
+  eq(gExp(res, "Vehicle"), undefined, "yearly bill hidden in an off-month");
+}
+{
+  // In its anniversary month (March) the whole charge shows as expected.
+  const res = reconcileMonth({
+    month: "2027-03", txns: [],
+    recurring_flows: [
+      { id: "y", name: "Car insurance", kind: "expense", amount: 600, category: "Vehicle",
+        frequency: "yearly", interval_n: 1, start_month: "2026-03" },
+    ],
+  });
+  eq(gExp(res, "Vehicle").expected, 600, "yearly bill: full charge in its month");
+}
+{
+  // Weekly flow accrues amount×(52/12)/interval as the month's expected.
+  const res = reconcileMonth({
+    month: MONTH, txns: [],
+    recurring_flows: [
+      { id: "w", name: "Cleaner", kind: "expense", amount: 60, category: "House",
+        frequency: "weekly", interval_n: 1, start_month: "2026-01" },
+    ],
+  });
+  eq(gExp(res, "House").expected, Math.round(60 * 52 / 12 * 100) / 100, "weekly expected accrues to monthly");
+}
+
 // ---- summary ---------------------------------------------------------------
 log(`\nreconcile: ${PASS} passed, ${FAIL} failed`);
 if (FAIL > 0) { if (typeof process !== "undefined") process.exit(1); throw new Error(`${FAIL} failing`); }

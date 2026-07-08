@@ -37,6 +37,28 @@ function flowActive(f, month) {
   return true;
 }
 
+// Does the flow's cadence put an occurrence in this month? Mirrors
+// engine.flowMonthFactor (kept in sync; import-free for the test runner). Weekly
+// accrues every month; monthly/yearly only land on their interval anniversaries.
+const ymIndex = (ym) => { const [y, m] = String(ym).split("-").map(Number); return y * 12 + (m - 1); };
+function flowLandsInMonth(f, month) {
+  const freq = f.frequency || "monthly";
+  if (freq === "weekly") return true;
+  if (!f.start_month) return true;
+  const since = ymIndex(month) - ymIndex(f.start_month);
+  if (since < 0) return false;
+  const n = Math.max(1, Number(f.interval_n) || 1);
+  return since % (freq === "yearly" ? 12 * n : n) === 0;
+}
+// Expected £ landing this month: a weekly flow accrues amount×(52/12)/interval;
+// monthly/yearly land the whole per-occurrence amount on their hit-month.
+function flowMonthlyExpected(f) {
+  const amt = Number(f.amount) || 0;
+  if ((f.frequency || "monthly") === "weekly")
+    return amt * (52 / 12) / Math.max(1, Number(f.interval_n) || 1);
+  return amt;
+}
+
 const round2 = (n) => Math.round(n * 100) / 100;
 
 // ---- the reconciler (pure) -------------------------------------------------
@@ -101,12 +123,13 @@ export function reconcileMonth(opts = {}) {
     const groups = new Map();
     for (const f of activeFlows) {
       if ((f.kind === "expense") !== wantExpense) continue;
+      if (!flowLandsInMonth(f, month)) continue;   // skip cadence off-months
       const gname = wantExpense ? (f.category || "Other") : "Income";
       if (!groups.has(gname))
         groups.set(gname, { name: gname, kind, type: "flows",
           expected: 0, actual: 0, pendingExpected: 0, over: false, lines: [] });
       const g = groups.get(gname);
-      const expected = round2(Number(f.amount) || 0);
+      const expected = round2(flowMonthlyExpected(f));
       const matched = flowTxns(f, wantExpense);
       const received = matched.length > 0;
       const actual = round2(matched.reduce((s, t) => s + Math.abs(t.amount), 0));

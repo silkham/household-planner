@@ -218,6 +218,41 @@ eq(gb.months[0].expenses, 1500, "general budget counts as a monthly expense");
 eq(gb.months[1].cash, 10000 - 1500 * 2, "general budget compounds down the cash line");
 has(gb.months[0].breakdown.expenses.map((x) => x.name), "General expenses", "budget shows in the breakdown");
 
+// ---- recurring-flow frequencies (flowMonthFactor + spread) -----------------
+// legacy / monthly-1 flows: factor 1 every active month (backward-compatible)
+approx(flowMonthFactor({ start_month: "2026-01" }, monthIndex("2026-05")), 1, "no frequency → monthly/1");
+approx(flowMonthFactor({ frequency: "monthly", interval_n: 1, start_month: "2026-01" }, monthIndex("2026-07")), 1, "monthly/1 every month");
+// quarterly (monthly interval 3): hits Jan, Apr, Jul…; 0 in between
+approx(flowMonthFactor({ frequency: "monthly", interval_n: 3, start_month: "2026-01" }, monthIndex("2026-01")), 1, "quarterly hits start");
+approx(flowMonthFactor({ frequency: "monthly", interval_n: 3, start_month: "2026-01" }, monthIndex("2026-02")), 0, "quarterly skips off-month");
+approx(flowMonthFactor({ frequency: "monthly", interval_n: 3, start_month: "2026-01" }, monthIndex("2026-04")), 1, "quarterly hits +3");
+// yearly: only the start month-of-year
+approx(flowMonthFactor({ frequency: "yearly", interval_n: 1, start_month: "2026-03" }, monthIndex("2026-03")), 1, "yearly hits its month");
+approx(flowMonthFactor({ frequency: "yearly", interval_n: 1, start_month: "2026-03" }, monthIndex("2026-04")), 0, "yearly skips other months");
+approx(flowMonthFactor({ frequency: "yearly", interval_n: 1, start_month: "2026-03" }, monthIndex("2027-03")), 1, "yearly hits next year");
+approx(flowMonthFactor({ frequency: "yearly", interval_n: 2, start_month: "2026-03" }, monthIndex("2027-03")), 0, "biennial skips the off-year");
+// weekly: accrues amount×(52/12)/interval each month
+approx(flowMonthFactor({ frequency: "weekly", interval_n: 1 }, 0), 52 / 12, "weekly accrual factor");
+approx(flowMonthFactor({ frequency: "weekly", interval_n: 2 }, 0), 52 / 24, "fortnightly accrual factor");
+// before start → 0
+approx(flowMonthFactor({ frequency: "monthly", interval_n: 1, start_month: "2026-06" }, monthIndex("2026-01")), 0, "before start → 0");
+
+// end-to-end spread through computeForecast
+const yearlyBill = computeForecast({
+  settings: { horizon_months: 15, cash_buffer: 0 }, startMonth: "2026-01",
+  accounts: [{ balance: 0, available_for_projects: true }],
+  recurring_flows: [{ id: "y", kind: "expense", amount: 1200, frequency: "yearly", interval_n: 1, start_month: "2026-03" }],
+});
+approx(yearlyBill.months[1].expenses, 0, "yearly bill: Feb has no charge");
+approx(yearlyBill.months[2].expenses, 1200, "yearly bill: Mar takes the whole charge");
+approx(yearlyBill.months[14].expenses, 1200, "yearly bill: next Mar charges again");
+const weekly = computeForecast({
+  settings: { horizon_months: 1, cash_buffer: 0 }, startMonth: "2026-01",
+  accounts: [{ balance: 0, available_for_projects: true }],
+  recurring_flows: [{ id: "w", kind: "expense", amount: 30, frequency: "weekly", interval_n: 1, start_month: "2026-01" }],
+});
+approx(weekly.months[0].expenses, 30 * 52 / 12, "weekly £30 accrues ~£130/mo");
+
 // ---- summary ---------------------------------------------------------------
 log("");
 log(`${PASS} passed, ${FAIL} failed`);

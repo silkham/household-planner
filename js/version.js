@@ -5,5 +5,5 @@
 //  can confirm which deployed build the browser actually loaded.
 //    major.minor.patch — minor tracks a shipped phase, patch a fix/tweak.
 // ============================================================================
-export const APP_VERSION = "1.12.0";  // 1.12.0 = Transfer → Investment: an investment/savings account can "top up from" a non-counting category (accounts.contrib_category); emma.js sums those transfers into its balance on sync (reuses category_rules)
+export const APP_VERSION = "1.13.0";  // 1.13.0 = Recurring-flow frequencies: weekly/monthly/yearly + interval (recurring_flows.frequency/interval_n); engine spreads amounts per cadence (flowMonthFactor), reconcile respects cadence, detector infers it
 export const BUILD_DATE  = "2026-07-08";

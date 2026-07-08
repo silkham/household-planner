@@ -53,6 +53,25 @@ const activeInMonth = (startYm, endYm, mIdx) => {
   return true;
 };
 
+// flowMonthFactor(flow, month): how much of the per-occurrence `amount` lands in
+// this month given the flow's cadence. Multiplies effectiveAmount in the engine.
+//   monthly → 1 on hit-months (every interval_n months from start), else 0
+//   yearly  → 1 on start's month-of-year every interval_n years, else 0
+//   weekly  → amount × (52/12)/interval_n every active month (approx accrual —
+//             no per-day schedule stored, which is plenty for a forecast)
+// Legacy rows (frequency/interval_n absent) behave exactly as monthly / 1.
+export function flowMonthFactor(flow, mIdx) {
+  const freq = flow.frequency || "monthly";
+  const n = Math.max(1, Number(flow.interval_n) || 1);
+  if (freq === "weekly") return (52 / 12) / n;
+  const startIdx = monthIndex(flow.start_month);
+  if (startIdx == null) return 1;              // no anchor → treat as every period
+  const since = mIdx - startIdx;
+  if (since < 0) return 0;
+  const period = freq === "yearly" ? 12 * n : n;
+  return (since % period === 0) ? 1 : 0;
+}
+
 // effective_amount(flow, month): base → compounded annual uplift → salary_change
 // override (latest one that passes the confidence filter). A step-change wins
 // over uplift for that month (it sets a fresh net figure).
@@ -188,7 +207,9 @@ export function computeForecast(input) {
     let income = 0;
     for (const f of recurring_flows) {
       if (f.kind !== "income" || !activeInMonth(f.start_month, f.end_month, mIdx)) continue;
-      const amt = effectiveAmount(f, mIdx, salary_changes, scenario)
+      const factor = flowMonthFactor(f, mIdx);
+      if (!factor) continue;                    // off-month for a weekly/yearly cadence
+      const amt = effectiveAmount(f, mIdx, salary_changes, scenario) * factor
         + linkedFlowDelta(f, mIdx, life_events);
       income += amt;
       bd.income.push({ name: f.name, amount: amt, source: "salary" });
@@ -224,7 +245,9 @@ export function computeForecast(input) {
     let expenses = 0;
     for (const f of recurring_flows) {
       if (f.kind !== "expense" || !activeInMonth(f.start_month, f.end_month, mIdx)) continue;
-      const amt = effectiveAmount(f, mIdx, salary_changes, scenario)
+      const factor = flowMonthFactor(f, mIdx);
+      if (!factor) continue;                    // off-month for a weekly/yearly cadence
+      const amt = effectiveAmount(f, mIdx, salary_changes, scenario) * factor
         + linkedFlowDelta(f, mIdx, life_events);
       expenses += amt;
       bd.expenses.push({ name: f.name, amount: amt, source: "recurring", category: f.category || "Other" });
