@@ -5,5 +5,5 @@
 //  can confirm which deployed build the browser actually loaded.
 //    major.minor.patch — minor tracks a shipped phase, patch a fix/tweak.
 // ============================================================================
-export const APP_VERSION = "1.13.1";  // 1.13.1 = fix "Save failed: duplicate key idx_hp_catrules_key" — single category_rule writes now upsert on (household_id, match_key) via store.saveCategoryRule (was insert-by-id, collided with existing rules)
+export const APP_VERSION = "1.13.2";  // 1.13.2 = fix category re-tags "not sticking" — loadAll now pages past PostgREST's 1000-row cap (category_rules hit 1067 in Session 11, so newest rules were silently truncated and never loaded)
 export const BUILD_DATE  = "2026-07-08";

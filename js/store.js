@@ -50,12 +50,25 @@ const subs = new Set();
 export function subscribe(fn) { subs.add(fn); return () => subs.delete(fn); }
 function emit() { subs.forEach((fn) => fn(state)); }
 
+// PostgREST caps a single select at 1000 rows by default, so a table can be
+// silently truncated once it grows past that (category_rules crossed 1000 in
+// Session 11 → newly-saved rules stopped loading, so re-tags "didn't stick").
+// Page through in 1000-row chunks until a short page signals the end.
+const PAGE = 1000;
+async function fetchAllRows(table) {
+  const rows = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await HP.from(table).select("*").range(from, from + PAGE - 1);
+    if (error) { console.error(`load ${table}:`, error.message); break; }
+    rows.push(...(data || []));
+    if (!data || data.length < PAGE) break;
+  }
+  return rows;
+}
+
 export async function loadAll() {
-  const results = await Promise.all(TABLES.map((t) => HP.from(t).select("*")));
-  TABLES.forEach((t, i) => {
-    if (results[i].error) console.error(`load ${t}:`, results[i].error.message);
-    state[t] = results[i].data || [];
-  });
+  const results = await Promise.all(TABLES.map((t) => fetchAllRows(t)));
+  TABLES.forEach((t, i) => { state[t] = results[i]; });
   const s = await HP.from("settings").select("*").maybeSingle();
   state.settings = s.data || null;
   emit();
