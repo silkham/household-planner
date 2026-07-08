@@ -148,6 +148,43 @@ const MAX = di(2026, 8, 15);   // treat mid-Aug 2026 as "today" (feed's newest t
   eq(res.map((s) => s.key).join(","), "Big,Mid,Small", "sorted by amount desc");
 }
 
+// ---- 12. recurringByCategory: a merchant mapped Recurring-* is a candidate --
+{
+  const rules = new Map([["Netflix", "Recurring - Media"]]);
+  const recurringCats = new Set(["Recurring - Media", "Recurring - Bills"]);
+  const txns = monthly("Netflix", -11, 2026, 5, 3, 15, "Shopping"); // Emma miscat'd; rule wins
+  const res = recurringByCategory(txns, { rules, recurringCats, maxDate: MAX });
+  const s = find(res, "Netflix");
+  ok(!!s, "Recurring-tagged merchant surfaced by category");
+  if (s) {
+    eq(s.category, "Recurring - Media", "keeps its Recurring category");
+    eq(s.amount, 11, "monthly amount = median charge");
+    eq(s.source, "category", "tagged source");
+    eq(s.stale, false, "recent → not stale");
+  }
+}
+
+// ---- 12b. a Recurring merchant gone quiet is flagged stale (not hidden) -----
+{
+  const rules = new Map([["OldGym", "Recurring - Bills"]]);
+  const recurringCats = new Set(["Recurring - Bills"]);
+  const txns = monthly("OldGym", -40, 2026, 1, 3, 15, "Bills");   // Jan–Mar, silent since
+  const s = find(recurringByCategory(txns, { rules, recurringCats, maxDate: MAX }), "OldGym");
+  ok(!!s, "cancelled recurring still listed for review");
+  eq(s && s.stale, true, "…but flagged stale (last seen far from feed end)");
+}
+
+// ---- 12c. non-recurring category + already-added are excluded --------------
+{
+  const rules = new Map([["Tesco", "Groceries"], ["Spotify", "Recurring - Media"]]);
+  const recurringCats = new Set(["Recurring - Media"]);
+  const txns = [...monthly("Tesco", -50, 2026, 5, 3), ...monthly("Spotify", -10, 2026, 5, 3)];
+  const res = recurringByCategory(txns, { rules, recurringCats, maxDate: MAX });
+  eq(find(res, "Tesco"), undefined, "non-recurring category not surfaced");
+  const added = recurringByCategory(txns, { rules, recurringCats, maxDate: MAX, existingKeys: new Set(["Spotify"]) });
+  eq(find(added, "Spotify"), undefined, "already-added flow suppressed");
+}
+
 // ---- summary ---------------------------------------------------------------
 log(`\nrecurring: ${PASS} passed, ${FAIL} failed`);
 if (FAIL > 0 && typeof process !== "undefined") process.exit(1);

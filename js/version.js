@@ -5,5 +5,5 @@
 //  can confirm which deployed build the browser actually loaded.
 //    major.minor.patch — minor tracks a shipped phase, patch a fix/tweak.
 // ============================================================================
-export const APP_VERSION = "1.9.0";   // 1.9.0 = strict categorisation: unmapped merchants → Uncategorised (not Emma's guess) + a "needs a category" prompt on Spending
+export const APP_VERSION = "1.10.0";  // 1.10.0 = merchants mapped to a Recurring-* category surface in Finances as forecast candidates (with stale flag), unioned with cadence detection
 export const BUILD_DATE  = "2026-07-08";
