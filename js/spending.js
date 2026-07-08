@@ -23,6 +23,7 @@ let loading = false;
 let loadErr = null;
 let selMonth = null;    // 'YYYY-MM' currently shown
 let openCats = new Set(); // expanded category names in the selected month
+let searchQ = "";       // transaction search query (all txns, any category)
 
 // ---- helpers ---------------------------------------------------------------
 // Shared merchant key + rule-aware category (multi-field match, so a re-tag
@@ -205,6 +206,42 @@ function categorise(key, currentCat) {
   });
 }
 
+// ---- transaction search ----------------------------------------------------
+// Searches ALL transactions (any category — incl. non-counting Transfers /
+// Excluded — and both directions) by merchant, category, date or amount. This
+// is the "show me everything" escape hatch: find a mortgage swept into
+// Transfers, see it, and re-file it via the same categorise sheet.
+function searchResults(rules, excluded) {
+  const q = searchQ.trim().toLowerCase();
+  if (!q) return "";
+  const scored = [];
+  for (const t of txns) {
+    const name = txKey(t);
+    const cat = effCategory(t, rules);
+    const amtStr = Math.abs(t.amount).toFixed(2);
+    const hay = `${name} ${cat} ${t.date || ""} ${amtStr}`.toLowerCase();
+    if (hay.includes(q)) scored.push({ t, name, cat });
+  }
+  scored.sort((a, b) => (b.t.dateInt || 0) - (a.t.dateInt || 0));
+  const CAP = 80;
+  const shown = scored.slice(0, CAP);
+  if (!scored.length)
+    return `<div class="sp-srch-res"><div class="sp-srch-meta">No transactions match “${searchQ}”.</div></div>`;
+  const rows = shown.map(({ t, name, cat }) => {
+    const off = excluded.has(cat);
+    const inflow = t.amount > 0;
+    return `<button class="sp-sr" data-key="${encodeURIComponent(name)}" data-cat="${encodeURIComponent(cat)}">
+      <span class="sp-sr-name">${name}</span>
+      <span class="sp-sr-cat ${off ? "off" : ""}">${cat}${off ? " · off" : ""}</span>
+      <span class="sp-sr-date">${t.date || ""}</span>
+      <span class="sp-sr-amt ${inflow ? "in" : ""}">${inflow ? "+" : ""}${fmtGBP(Math.abs(t.amount))}</span>
+      <i data-lucide="tag"></i>
+    </button>`;
+  }).join("");
+  const meta = `${scored.length} match${scored.length === 1 ? "" : "es"}${scored.length > CAP ? ` · showing ${CAP}` : ""} · tap to re-file`;
+  return `<div class="sp-srch-res"><div class="sp-srch-meta">${meta}</div>${rows}</div>`;
+}
+
 // ---- render ----------------------------------------------------------------
 function render() {
   const root = document.getElementById("spending-root");
@@ -219,11 +256,22 @@ function render() {
       <i data-lucide="refresh-cw"></i>${loading ? "Loading…" : "Refresh"}</button>
   </div>`;
 
+  // Search box (once the feed is loaded) — searches ALL transactions.
+  const searchBox = txns != null ? `<div class="sp-search">
+    <i data-lucide="search"></i>
+    <input id="sp-search" type="text" placeholder="Search all transactions — merchant, category, amount…"
+      value="${searchQ.replace(/"/g, "&quot;")}" autocomplete="off">
+    ${searchQ ? `<button class="sp-srch-clr" data-srch-clr aria-label="Clear"><i data-lucide="x"></i></button>` : ""}
+  </div>` : "";
+
   let bodyHtml;
   if (loadErr) {
     bodyHtml = `<div class="sec-empty">Couldn't load Emma: ${loadErr}<br><button class="sp-load" data-refresh>Try again</button></div>`;
   } else if (txns == null) {
     bodyHtml = `<div class="sec-empty">${loading ? "Loading spending…" : `<button class="sp-load" data-refresh>Load spending from Emma</button>`}</div>`;
+  } else if (searchQ.trim()) {
+    // Search mode — show only the results (month view + prompt hidden for focus).
+    bodyHtml = searchResults(rules, excluded);
   } else {
     const spend = txns.filter((t) => isSpend(t, rules, excluded));
     const promptHtml = uncategorisedHtml(spend, rules);
@@ -253,12 +301,31 @@ function render() {
     }
   }
 
-  // Category manager sits at the foot of the tab once the feed is loaded.
-  const managerHtml = txns != null ? categoryManagerHtml(txns) : "";
-  root.innerHTML = head + bodyHtml + managerHtml;
+  // Category manager sits at the foot of the tab once the feed is loaded
+  // (hidden while searching to keep the results view focused).
+  const managerHtml = (txns != null && !searchQ.trim()) ? categoryManagerHtml(txns) : "";
+  root.innerHTML = head + searchBox + bodyHtml + managerHtml;
 
   // wiring
-  if (txns != null) wireCategoryManager(root, txns, render);
+  const srch = root.querySelector("#sp-search");
+  if (srch) {
+    // Full re-render on input would drop focus — restore it + caret to the end.
+    srch.oninput = () => {
+      searchQ = srch.value;
+      const caret = srch.selectionStart;
+      render();
+      const again = document.getElementById("sp-search");
+      if (again) { again.focus(); try { again.setSelectionRange(caret, caret); } catch {} }
+    };
+  }
+  root.querySelectorAll("[data-srch-clr]").forEach((b) => b.onclick = () => {
+    searchQ = ""; render();
+    const el = document.getElementById("sp-search"); if (el) el.focus();
+  });
+  root.querySelectorAll(".sp-sr").forEach((b) => b.onclick = () => {
+    categorise(decodeURIComponent(b.dataset.key), decodeURIComponent(b.dataset.cat));
+  });
+  if (txns != null && !searchQ.trim()) wireCategoryManager(root, txns, render);
   root.querySelectorAll("[data-refresh]").forEach((b) => b.onclick = () => load(true));
   root.querySelectorAll(".sp-bar").forEach((g) => g.onclick = () => {
     selMonth = g.dataset.month; openCats.clear(); render();

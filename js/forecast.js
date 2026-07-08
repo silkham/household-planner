@@ -63,14 +63,19 @@ function buildChart(fc) {
       ? `<text x="${x(i).toFixed(1)}" y="${H - 7}" text-anchor="middle" class="ax-lbl">${shortMonth(m.month)}</text>`
       : "").join("");
 
-  // points — plain, below-buffer (amber), negative (coral)
+  // points — plain, below-buffer (amber), negative (coral). Each carries a wide
+  // transparent hit-circle with a native <title> so hover shows the position.
   const dots = ms.map((m, i) => {
     const neg = m.flags.includes("negative");
     const below = m.flags.includes("below_buffer");
     const tint = neg ? "coral" : below ? "amber" : "mint";
     const r = neg || below ? 3.2 : 2;
-    return `<circle cx="${x(i).toFixed(1)}" cy="${y(m.cash).toFixed(1)}" r="${r}"
-      fill="var(--${tint})" ${neg ? 'class="pt-danger"' : ""}/>`;
+    const cx = x(i).toFixed(1), cy = y(m.cash).toFixed(1);
+    const tip = `${shortMonth(m.month)} · cash ${fmtGBP(m.cash)} · net ${signed(m.net)}`;
+    return `<circle cx="${cx}" cy="${cy}" r="${r}"
+      fill="var(--${tint})" ${neg ? 'class="pt-danger"' : ""}/>
+      <circle cx="${cx}" cy="${cy}" r="11" fill="transparent" style="cursor:pointer">
+        <title>${tip}</title></circle>`;
   }).join("");
 
   // circle the lowest point and annotate it
@@ -266,7 +271,32 @@ function groupRow(g) {
     </button>${bar}${body}</div>`;
 }
 
-function buildReconcile() {
+// Planned project spend for the current month — mirrors the future-month rows,
+// which show a Projects figure. Sourced from the engine (not Emma-matched), so
+// each project line is tagged "planned". Renders as an expandable expense group.
+function projectGroup(fc) {
+  const m0 = fc.months[0];
+  if (!m0 || !(m0.project_spend > 0.5)) return "";
+  const lines = m0.breakdown.expenses.filter((b) => b.source === "project" && b.amount > 0.5);
+  const path = `g:expense:Projects`;
+  const open = rcExpanded.has(path);
+  const rows = lines.map((l) => `<div class="rc-cat">
+    <div class="rc-crow"><div class="rc-chead" style="cursor:default">
+      <span class="rc-chev"></span><span class="rc-cname">${l.name}</span>
+      <span class="rc-tag amber">planned</span>
+      <span class="rc-nums"><b style="color:var(--coral)">${fmtGBP(l.amount)}</b></span>
+    </div></div></div>`).join("");
+  const body = open ? `<div class="rc-cats">${rows}</div>` : "";
+  return `<div class="rc-grp ${open ? "open" : ""}">
+    <button class="rc-ghead" data-rc="${encodeURIComponent(path)}">
+      <i data-lucide="chevron-${open ? "down" : "right"}" class="rc-chev"></i>
+      <span class="rc-gname">Projects</span>
+      <span class="rc-tag amber">planned</span>
+      <span class="rc-gnums"><b style="color:var(--coral)">${fmtGBP(m0.project_spend)}</b></span>
+    </button>${body}</div>`;
+}
+
+function buildReconcile(fc) {
   if (!emmaConfigured()) return "";
   const month = thisMonth();
   let body;
@@ -283,8 +313,9 @@ function buildReconcile() {
       excluded: buildExcludedSet(state.categories),
     });
     const groups = [...r.income, ...r.expense];
-    body = groups.length
-      ? groups.map(groupRow).join("")
+    const projHtml = projectGroup(fc);
+    body = (groups.length || projHtml)
+      ? groups.map(groupRow).join("") + projHtml
       : `<div class="sec-empty">No recurring flows or spend matched this month yet.</div>`;
   }
   return `<section class="rc-card glass">
@@ -333,7 +364,7 @@ function render() {
     </div>
     <div class="cf-card glass">${buildChart(fc)}</div>
     ${buildAlerts(fc)}
-    ${buildReconcile()}
+    ${buildReconcile(fc)}
     <div class="cf-tablehead"><span>Month</span><span>Net</span><span>Cash</span><span></span></div>
     <div class="cf-table">${fc.months.map(monthRow).join("")}</div>`;
 
