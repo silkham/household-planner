@@ -29,8 +29,20 @@ export function ruleCategory(t, rules) {
       || (t.counterparty && rules.get(t.counterparty))
       || null;
 }
+// Emma's internal-money signals are the ONLY categories we still trust from the
+// raw feed when a merchant has no rule — normalised to our managed non-counting
+// names (Emma writes "Transfer" singular). Everything else unmapped resolves to
+// "Uncategorised" so Emma can't silently drop a NEW merchant into the wrong
+// spend bucket — the household maps it deliberately (see the Spending prompt).
+export function passThroughCategory(c) {
+  const l = (c || "").toLowerCase();
+  if (l === "excluded") return "Excluded";
+  if (l === "transfer" || l === "transfers") return "Transfers";
+  return null;
+}
+
 export const effectiveCategory = (t, rules) =>
-  ruleCategory(t, rules) || t.category || "Uncategorised";
+  ruleCategory(t, rules) || passThroughCategory(t.category) || "Uncategorised";
 
 // Set of category names that DON'T count toward spend.
 export function buildExcludedSet(categories = []) {

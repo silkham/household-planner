@@ -81,6 +81,8 @@ const catOf = (g, name) => g && g.categories.find((c) => c.name === name);
     recurring_flows: [
       { id: "m", name: "Mortgage", kind: "expense", amount: 1200, category: "Housing", emma_match_key: "BigBank Mortgage" },
     ],
+    // rules give the breakdown its labels; unmapped merchants roll into Uncategorised
+    category_rules: [{ match_key: "Amazon", category: "Amazon" }],
     budgets: { "General Expenses": 400 },
   });
   const g = gExp(res, "General Expenses");
@@ -90,8 +92,9 @@ const catOf = (g, name) => g && g.categories.find((c) => c.name === name);
     eq(g.expected, 400, "expected = the budget");
     eq(g.actual, 125, "actual = discretionary spend only (mortgage excluded)");
     eq(g.over, false, "125 < 400 → not over");
-    eq(catOf(g, "Shopping").actual, 85, "Amazon spend rolled into its category");
-    eq(catOf(g, "Shopping").txns.length, 2, "category keeps its transactions");
+    eq(catOf(g, "Amazon").actual, 85, "Amazon (ruled) rolled into its category");
+    eq(catOf(g, "Amazon").txns.length, 2, "category keeps its transactions");
+    eq(catOf(g, "Uncategorised").actual, 40, "unmapped Deliveroo → Uncategorised, not Emma's 'Eating out'");
   }
   ok(res.expense[res.expense.length - 1].name === "General Expenses", "General sits last");
 }

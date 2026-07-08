@@ -60,12 +60,20 @@ export function reconcileMonth(opts = {}) {
     : new Map((opts.category_rules || []).map((r) => [r.match_key, r.category]));
 
   // Rule override matches ANY identity field, so a re-tag sticks across months
-  // even when Emma's Custom Name varies (Amazon, refunds…).
+  // even when Emma's Custom Name varies (Amazon, refunds…). An unmapped merchant
+  // resolves to "Uncategorised" — we only trust Emma's own internal-money signals
+  // (Excluded/Transfer) from the raw feed (kept in sync with categories.js).
+  const passThrough = (c) => {
+    const l = (c || "").toLowerCase();
+    return l === "excluded" ? "Excluded"
+      : (l === "transfer" || l === "transfers") ? "Transfers" : null;
+  };
   const effCat = (t) =>
     (t.customName && rules.get(t.customName))
     || (t.merchant && rules.get(t.merchant))
     || (t.counterparty && rules.get(t.counterparty))
-    || t.category || "Uncategorised";
+    || passThrough(t.category)
+    || "Uncategorised";
 
   // A transaction "is" a flow/merchant key if any of its identity fields equals it.
   const matchesKey = (t, key) => !!key

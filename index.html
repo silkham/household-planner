@@ -487,6 +487,21 @@ main { flex: 1; padding: 20px 18px 108px; }
 .sp-chart { width: 100%; height: auto; display: block; overflow: visible; }
 .sp-barfill { animation: barGrow .5s var(--ease) forwards; }
 @keyframes barGrow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+/* "needs a category" prompt (strict categorisation backstop) */
+.sp-uncat { padding: 14px 15px; border-radius: var(--r-card); margin-bottom: 14px;
+  border: 1px solid color-mix(in srgb, var(--amber) 45%, transparent); }
+.sp-uncat-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.sp-uncat-title { font-family: var(--font-head); font-size: 15px; }
+.sp-uncat-sub { font-size: 12.5px; color: var(--text-faint); margin-top: 2px; }
+.sp-uncat-badge { flex: none; min-width: 26px; height: 26px; padding: 0 8px; border-radius: 13px;
+  background: var(--amber); color: #1a1204; font-weight: 700; font-size: 13px;
+  display: inline-flex; align-items: center; justify-content: center; }
+.sp-uncat-row { width: 100%; display: flex; align-items: center; gap: 10px; padding: 9px 11px; margin-top: 6px;
+  border-radius: var(--r-ctrl); border: 1px solid var(--hairline); background: var(--card); cursor: pointer; text-align: left; }
+.sp-uncat-name { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sp-uncat-meta { font-size: 12.5px; color: var(--text-faint); white-space: nowrap; flex: none; }
+.sp-uncat-row i { width: 15px; height: 15px; color: var(--text-faint); flex: none; }
+.sp-uncat-more { font-size: 12px; color: var(--text-faint); margin-top: 8px; text-align: center; }
 .sp-selhead { display: flex; align-items: baseline; justify-content: space-between; margin: 4px 2px 10px; }
 .sp-selmon { font-family: var(--font-head); font-weight: 500; font-size: 16px; }
 .sp-seltot { font-variant-numeric: tabular-nums; color: var(--text-dim); font-size: 13px; }

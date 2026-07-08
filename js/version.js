@@ -5,5 +5,5 @@
 //  can confirm which deployed build the browser actually loaded.
 //    major.minor.patch — minor tracks a shipped phase, patch a fix/tweak.
 // ============================================================================
-export const APP_VERSION = "1.8.0";   // 1.8.0 = category Move sheet = per-merchant multi-select bulk mover; Emma-linked recurring flow syncs its category to a merchant rule
+export const APP_VERSION = "1.9.0";   // 1.9.0 = strict categorisation: unmapped merchants → Uncategorised (not Emma's guess) + a "needs a category" prompt on Spending
 export const BUILD_DATE  = "2026-07-08";

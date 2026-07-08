@@ -118,11 +118,23 @@ const MAX = di(2026, 8, 15);   // treat mid-Aug 2026 as "today" (feed's newest t
 // ---- 10b. a custom excluded set (managed categories) is honoured ----------
 {
   const txns = monthly("Council Tax", -180, 2026, 2, 6, 15, "Bills");
-  // household turned "Bills" off → should not be detected
-  const res = detectRecurring(txns, { maxDate: MAX, excluded: new Set(["Bills"]) });
-  eq(find(res, "Council Tax"), undefined, "opts.excluded set skips that category");
-  // …but with the default excluded set it IS detected
-  ok(!!find(detectRecurring(txns, { maxDate: MAX }), "Council Tax"), "default excluded still detects Bills");
+  // household mapped this merchant to "Bills" and turned "Bills" off → not detected.
+  // (Strict categorisation: exclusion works via the RULE'd category, not Emma's raw
+  // one — an unmapped merchant is "Uncategorised" regardless of Emma's tag.)
+  const rules = new Map([["Council Tax", "Bills"]]);
+  const res = detectRecurring(txns, { maxDate: MAX, rules, excluded: new Set(["Bills"]) });
+  eq(find(res, "Council Tax"), undefined, "excluded category (via rule) skips detection");
+  // …unmapped, or without excluding Bills, it IS detected
+  ok(!!find(detectRecurring(txns, { maxDate: MAX }), "Council Tax"), "unmapped merchant still detected");
+}
+
+// ---- 10c. strict: an unmapped internal-money txn still passes through -------
+{
+  // Emma tags a card payment "Transfer" (raw feed); no rule. It must stay excluded
+  // by the default set even though we otherwise ignore Emma's category.
+  const txns = monthly("CardPay", -400, 2026, 2, 6, 15, "Transfer");
+  eq(find(detectRecurring(txns, { maxDate: MAX }), "CardPay"), undefined,
+    "unmapped Emma 'Transfer' passes through → excluded");
 }
 
 // ---- 11. results sorted by monthly amount, largest first ------------------

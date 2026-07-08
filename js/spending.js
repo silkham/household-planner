@@ -137,6 +137,40 @@ function categoryRows(monthTxns, rules) {
   }).join("");
 }
 
+// ---- "needs a category" prompt ---------------------------------------------
+// Every unmapped merchant (effective category = Uncategorised) that counts as
+// spend, biggest first — one tap opens the same categorise sheet. This is the
+// backstop for strict categorisation: nothing new is silently mis-bucketed.
+function uncategorisedHtml(spend, rules) {
+  const agg = new Map();
+  for (const t of spend) {
+    if (effCategory(t, rules) !== "Uncategorised") continue;
+    const k = txnKey(t);
+    const a = agg.get(k) || { key: k, count: 0, total: 0 };
+    a.count += 1; a.total += -t.amount; agg.set(k, a);
+  }
+  if (!agg.size) return "";
+  const list = [...agg.values()].sort((a, b) => b.total - a.total);
+  const total = list.reduce((s, x) => s + x.total, 0);
+  const shown = list.slice(0, 25);
+  const rows = shown.map((x) => `
+    <button class="sp-uncat-row" data-uncat="${encodeURIComponent(x.key)}">
+      <span class="sp-uncat-name">${x.key}</span>
+      <span class="sp-uncat-meta">${x.count}× · ${fmtGBP(x.total)}</span>
+      <i data-lucide="chevron-right"></i>
+    </button>`).join("");
+  const more = list.length > shown.length
+    ? `<div class="sp-uncat-more">+${list.length - shown.length} more — biggest shown first</div>` : "";
+  return `<div class="sp-uncat glass">
+    <div class="sp-uncat-head">
+      <div>
+        <div class="sp-uncat-title">${list.length} merchant${list.length === 1 ? "" : "s"} need a category</div>
+        <div class="sp-uncat-sub">${fmtGBP(total)} unsorted · tap to file each one</div>
+      </div>
+      <span class="sp-uncat-badge">${list.length}</span>
+    </div>${rows}${more}</div>`;
+}
+
 // ---- re-categorise sheet ---------------------------------------------------
 function categorise(key, currentCat) {
   const existing = state.category_rules.find((r) => r.match_key === key);
@@ -192,6 +226,7 @@ function render() {
     bodyHtml = `<div class="sec-empty">${loading ? "Loading spending…" : `<button class="sp-load" data-refresh>Load spending from Emma</button>`}</div>`;
   } else {
     const spend = txns.filter((t) => isSpend(t, rules, excluded));
+    const promptHtml = uncategorisedHtml(spend, rules);
     // monthly totals
     const byMonth = new Map();
     for (const t of spend) {
@@ -203,12 +238,12 @@ function render() {
       .sort((a, b) => (a.month < b.month ? -1 : 1));
 
     if (!months.length) {
-      bodyHtml = `<div class="sec-empty">No spend transactions found in the feed.</div>`;
+      bodyHtml = promptHtml + `<div class="sec-empty">No spend transactions found in the feed.</div>`;
     } else {
       if (!selMonth || !byMonth.has(selMonth)) selMonth = months[months.length - 1].month;
       const monthTxns = spend.filter((t) => monthOf(t.dateInt) === selMonth);
       const monthTotal = byMonth.get(selMonth) || 0;
-      bodyHtml = `
+      bodyHtml = promptHtml + `
         <div class="cf-card glass">${buildChart(months)}</div>
         <div class="sp-selhead">
           <span class="sp-selmon">${fmtMonth(selMonth)}</span>
@@ -238,6 +273,8 @@ function render() {
     const cat = decodeURIComponent(b.dataset.cat);
     categorise(key, cat);
   });
+  root.querySelectorAll("[data-uncat]").forEach((b) => b.onclick = () =>
+    categorise(decodeURIComponent(b.dataset.uncat), "Uncategorised"));
 
   window.lucide && lucide.createIcons({ nameAttr: "data-lucide" });
 }

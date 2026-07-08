@@ -68,11 +68,15 @@ export function detectRecurring(txns, opts = {}) {
   const groups = new Map();
   for (const t of txns) {
     if (!t.dateInt || !t.amount) continue;
-    // rule override matches any identity field (see categories.js)
+    // rule override matches any identity field (see categories.js). Unmapped →
+    // "Uncategorised"; only Emma's internal-money signals pass through from raw.
+    const l = (t.category || "").toLowerCase();
+    const passThrough = l === "excluded" ? "Excluded"
+      : (l === "transfer" || l === "transfers") ? "Transfers" : null;
     const cat = (t.customName && rules.get(t.customName))
       || (t.merchant && rules.get(t.merchant))
       || (t.counterparty && rules.get(t.counterparty))
-      || t.category || "";
+      || passThrough || "Uncategorised";
     if (excluded.has(cat)) continue;
     const dir = t.amount < 0 ? "out" : "in";
     const gk = mkey(t) + "\u0000" + dir;
