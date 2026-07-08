@@ -103,53 +103,133 @@ function buildChart(months) {
     ${bars}</svg>`;
 }
 
-// ---- category rows for the selected month ----------------------------------
-// Takes ALL outflows for the month. Counting categories render first with
-// proportion bars (their sum = the "£X spent" figure); non-counting buckets
-// (Transfers / Excluded) follow under a divider, marked "not counted" and
-// omitted from the proportion grand total — visible & expandable so a bill
-// swept into Transfers can be spotted and re-filed, without inflating spend.
-function categoryRows(monthOutflows, rules, excluded) {
-  const groups = new Map();
-  for (const t of monthOutflows) {
-    const cat = effCategory(t, rules);
-    if (!groups.has(cat)) groups.set(cat, { cat, total: 0, txns: [], counts: !excluded.has(cat) });
-    const g = groups.get(cat);
-    g.total += -t.amount;   // outflow magnitude
-    g.txns.push(t);
-  }
-  const all = [...groups.values()];
-  const counting = all.filter((g) => g.counts).sort((a, b) => b.total - a.total);
-  const noncount = all.filter((g) => !g.counts).sort((a, b) => b.total - a.total);
-  const grand = counting.reduce((s, g) => s + g.total, 0) || 1;
+// ---- month "position" panel (actuals, laid out like the forecast month row) -
+// Groups the selected month's real Emma transactions the SAME way the forecast
+// does: known recurring bills sit under their flow's category, and every other
+// counting outflow collates into "General Expenses" (shown against its budget so
+// you can sanity-check that figure). Income = actual inflows. Net = in − out.
+// The known-bill carve-out mirrors reconcile.js (match on any identity field).
+const enc = encodeURIComponent;
+const GENERAL = "General Expenses";
 
-  const rowHtml = (g) => {
-    const isOpen = openCats.has(g.cat);
-    const pct = g.counts ? Math.round((g.total / grand) * 100) : 0;
-    const txRows = isOpen
-      ? g.txns.slice().sort((a, b) => (b.dateInt || 0) - (a.dateInt || 0)).map((t) => `
-          <button class="sp-tx" data-key="${encodeURIComponent(txKey(t))}" data-cat="${encodeURIComponent(g.cat)}">
-            <span class="sp-tx-name">${txKey(t)}</span>
-            <span class="sp-tx-date">${t.date}</span>
-            <span class="sp-tx-amt">${fmtGBP(-t.amount)}</span>
-            <i data-lucide="tag"></i>
-          </button>`).join("")
-      : "";
-    return `<div class="sp-catrow ${isOpen ? "open" : ""} ${g.counts ? "" : "notcount"}">
-      <button class="sp-cathead" data-cat="${encodeURIComponent(g.cat)}">
-        <span class="sp-catname">${g.cat}${g.counts ? "" : ` <span class="sp-catoff">not counted</span>`}</span>
-        ${g.counts ? `<span class="sp-catbar"><span style="width:${pct}%"></span></span>` : `<span class="sp-catbar off"></span>`}
-        <span class="sp-catamt">${fmtGBP(g.total)}</span>
-        <i data-lucide="chevron-${isOpen ? "up" : "down"}" class="sp-chev"></i>
-      </button>${txRows}</div>`;
+function buildMonthActuals(month, monthTxns, rules, excluded) {
+  // flows active in this month → their merchant keys, split by direction
+  const flows = state.recurring_flows.filter((f) =>
+    (!f.start_month || f.start_month <= month) && (!f.end_month || f.end_month >= month));
+  const expKey = new Map();   // emma_match_key → expense flow category
+  const incKey = new Map();   // emma_match_key → income flow name
+  for (const f of flows) {
+    if (!f.emma_match_key) continue;
+    if (f.kind === "income") incKey.set(f.emma_match_key, f.name);
+    else expKey.set(f.emma_match_key, f.category || "Other");
+  }
+  const matchAny = (map, t) =>
+    map.get(t.customName) || map.get(t.merchant) || map.get(t.counterparty) || null;
+
+  const income = new Map(), expense = new Map(), noncount = new Map();
+  const bump = (map, key, amt, t) => {
+    let g = map.get(key);
+    if (!g) { g = { name: key, amount: 0, txns: [], sub: new Map() }; map.set(key, g); }
+    g.amount += amt; g.txns.push(t);
+    return g;
   };
 
-  const countHtml = counting.map(rowHtml).join("");
-  const nonHtml = noncount.length
-    ? `<div class="sp-notcount-div">Not counted as spend — transfers, excluded, card payments</div>`
-      + noncount.map(rowHtml).join("")
+  for (const t of monthTxns) {
+    const cat = effCategory(t, rules);
+    if (excluded.has(cat)) { if (t.amount < 0) bump(noncount, cat, -t.amount, t); continue; }
+    if (t.amount > 0) { bump(income, matchAny(incKey, t) || "Other income", t.amount, t); }
+    else if (t.amount < 0) {
+      const g = bump(expense, matchAny(expKey, t) || GENERAL, -t.amount, t);
+      // sub-breakdown by effective category — only surfaced for General Expenses
+      let s = g.sub.get(cat); if (!s) { s = { name: cat, amount: 0, txns: [] }; g.sub.set(cat, s); }
+      s.amount += -t.amount; s.txns.push(t);
+    }
+  }
+
+  const byAmt = (a, b) => b.amount - a.amount;
+  const byDate = (a, b) => (b.dateInt || 0) - (a.dateInt || 0);
+  const fin = (arr) => arr.sort(byAmt).map((g) => {
+    g.txns.sort(byDate);
+    g.subArr = [...g.sub.values()].sort(byAmt);
+    g.subArr.forEach((s) => s.txns.sort(byDate));
+    return g;
+  });
+  const incomeArr = fin([...income.values()]);
+  const expenseArr = fin([...expense.values()]);
+  const nonArr = fin([...noncount.values()]);
+  const totIn = incomeArr.reduce((s, g) => s + g.amount, 0);
+  const totOut = expenseArr.reduce((s, g) => s + g.amount, 0);
+  return { incomeArr, expenseArr, nonArr, totIn, totOut, net: totIn - totOut };
+}
+
+function spTx(t, cat) {
+  return `<button class="sp-tx" data-key="${enc(txKey(t))}" data-cat="${enc(cat)}">
+    <span class="sp-tx-name">${txKey(t)}</span>
+    <span class="sp-tx-date">${t.date}</span>
+    <span class="sp-tx-amt">${fmtGBP(Math.abs(t.amount))}</span>
+    <i data-lucide="tag"></i></button>`;
+}
+
+// One expandable "Out"/"Not counted" category group. General Expenses expands to
+// its sub-categories (each → transactions); everything else expands to txns.
+function outGroup(g, { general = false, notcount = false } = {}) {
+  const key = `${notcount ? "n" : "e"}:${g.name}`;
+  const open = openCats.has(key);
+  const budget = ((state.settings && state.settings.forecast_budgets) || {})[GENERAL];
+  const badge = general && budget != null
+    ? `<span class="sp-budget ${g.amount > budget + 0.005 ? "over" : ""}">/ ${fmtGBP(budget)} budget</span>` : "";
+  const off = notcount ? ` <span class="sp-catoff">not counted</span>` : "";
+  let body = "";
+  if (open) {
+    if (general) {
+      body = g.subArr.map((s) => {
+        const sk = `s:${s.name}`;
+        const sopen = openCats.has(sk);
+        const stx = sopen ? `<div class="bd-lines">${s.txns.map((t) => spTx(t, s.name)).join("")}</div>` : "";
+        return `<div class="bd-cat ${sopen ? "open" : ""}">
+          <button class="bd-cathead" data-gkey="${enc(sk)}">
+            <i data-lucide="chevron-${sopen ? "down" : "right"}" class="bd-chev"></i>
+            <span class="bd-catname">${s.name}</span>
+            <span class="bd-catamt">−${fmtGBP(s.amount)}</span>
+          </button>${stx}</div>`;
+      }).join("");
+    } else {
+      body = `<div class="bd-lines">${g.txns.map((t) => spTx(t, g.name)).join("")}</div>`;
+    }
+  }
+  return `<div class="bd-cat ${open ? "open" : ""} ${notcount ? "notcount" : ""}">
+    <button class="bd-cathead" data-gkey="${enc(key)}">
+      <i data-lucide="chevron-${open ? "down" : "right"}" class="bd-chev"></i>
+      <span class="bd-catname">${g.name}${off}${badge}</span>
+      <span class="bd-catamt">−${fmtGBP(g.amount)}</span>
+    </button>${body}</div>`;
+}
+
+function monthPanelHtml(month, d) {
+  const net = d.net;
+  const pos = `<div class="sp-pos">
+    <span class="sp-pos-mon">${fmtMonth(month)}</span>
+    <span class="sp-pos-net" style="color:var(--${net < 0 ? "coral" : "mint"})">${net < 0 ? "−" : "+"}${fmtGBP(Math.abs(net))} net</span>
+  </div>
+  <div class="mr-nums">
+    <span>Income <b style="color:var(--mint)">+${fmtGBP(d.totIn)}</b></span>
+    <span>Expenses <b style="color:var(--coral)">−${fmtGBP(d.totOut)}</b></span>
+  </div>`;
+
+  const incomeHtml = d.incomeArr.length
+    ? `<div class="bd-grp"><div class="bd-h">Income</div>${d.incomeArr.map((g) =>
+        `<div class="bd-row"><span>${g.name}</span><span>+${fmtGBP(g.amount)}</span></div>`).join("")}</div>`
     : "";
-  return countHtml + nonHtml;
+  const outHtml = d.expenseArr.length
+    ? `<div class="bd-grp"><div class="bd-h">Out</div>${d.expenseArr.map((g) =>
+        outGroup(g, { general: g.name === GENERAL })).join("")}</div>`
+    : "";
+  const nonHtml = d.nonArr.length
+    ? `<div class="bd-grp"><div class="bd-h">Not counted</div>${d.nonArr.map((g) =>
+        outGroup(g, { notcount: true })).join("")}</div>`
+    : "";
+
+  return `<div class="sp-month glass">${pos}${incomeHtml}${outHtml}${nonHtml}</div>`;
 }
 
 // ---- "needs a category" prompt ---------------------------------------------
@@ -306,17 +386,14 @@ function render() {
       bodyHtml = promptHtml + `<div class="sec-empty">No spend transactions found in the feed.</div>`;
     } else {
       if (!selMonth || !byMonth.has(selMonth)) selMonth = months[months.length - 1].month;
-      // ALL outflows for the month (counting + non-counting) — categoryRows
-      // splits them; the "£X spent" figure stays counting-only (byMonth).
-      const monthOutflows = txns.filter((t) => t.amount < 0 && monthOf(t.dateInt) === selMonth);
-      const monthTotal = byMonth.get(selMonth) || 0;
+      // ALL transactions for the month (both directions) — the panel splits them
+      // into Income / known-bill categories / General Expenses / not-counted,
+      // laid out like the forecast month row but from actuals.
+      const monthAll = txns.filter((t) => monthOf(t.dateInt) === selMonth);
+      const data = buildMonthActuals(selMonth, monthAll, rules, excluded);
       bodyHtml = promptHtml + `
         <div class="cf-card glass">${buildChart(months)}</div>
-        <div class="sp-selhead">
-          <span class="sp-selmon">${fmtMonth(selMonth)}</span>
-          <span class="sp-seltot">${fmtGBP(monthTotal)} spent</span>
-        </div>
-        <div class="sp-cats">${categoryRows(monthOutflows, rules, excluded)}</div>`;
+        ${monthPanelHtml(selMonth, data)}`;
     }
   }
 
@@ -349,8 +426,8 @@ function render() {
   root.querySelectorAll(".sp-bar").forEach((g) => g.onclick = () => {
     selMonth = g.dataset.month; openCats.clear(); render();
   });
-  root.querySelectorAll(".sp-cathead").forEach((b) => b.onclick = () => {
-    const c = decodeURIComponent(b.dataset.cat);
+  root.querySelectorAll("[data-gkey]").forEach((b) => b.onclick = () => {
+    const c = decodeURIComponent(b.dataset.gkey);
     openCats.has(c) ? openCats.delete(c) : openCats.add(c);
     render();
   });

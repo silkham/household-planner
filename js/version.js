@@ -5,5 +5,5 @@
 //  can confirm which deployed build the browser actually loaded.
 //    major.minor.patch — minor tracks a shipped phase, patch a fix/tweak.
 // ============================================================================
-export const APP_VERSION = "1.13.2";  // 1.13.2 = fix category re-tags "not sticking" — loadAll now pages past PostgREST's 1000-row cap (category_rules hit 1067 in Session 11, so newest rules were silently truncated and never loaded)
+export const APP_VERSION = "1.14.0";  // 1.14.0 = Spending month view now mirrors the forecast month row from ACTUALS: Net position, Income lines, Out grouped by known-bill category + General Expenses (vs budget), non-counting below — same carve-out as reconcile so the General figure is verifiable
 export const BUILD_DATE  = "2026-07-08";
