@@ -111,7 +111,6 @@ function buildChart(months) {
 // The known-bill carve-out mirrors reconcile.js (match on any identity field).
 const enc = encodeURIComponent;
 const GENERAL = "General Expenses";
-const REFUNDS = "Refunds & other in";
 const INCOME_RE = /salary|bonus|wages|\bincome\b/i;
 
 // Categories that ARE recurring/fixed payments → each gets its own Out line
@@ -148,46 +147,65 @@ function buildMonthActuals(month, monthTxns, rules, excluded) {
     map.get(t.customName) || map.get(t.merchant) || map.get(t.counterparty) || null;
   const recurCats = recurringCatSet();
   const investCats = investCatSet();
+  // A merchant we EVER pay → an inflow from it is a refund (net it into spend),
+  // not income. Sources we never pay (family transfers) stay as Other income.
+  const paidMerchants = new Set();
+  for (const t of (txns || [])) if (t.amount < 0) paidMerchants.add(txKey(t));
 
   const income = new Map(), expense = new Map(), invest = new Map(), noncount = new Map();
-  const bump = (map, key, amt, t) => {
+  // simple {name, amount, txns} bucket (income / invest / not-counted)
+  const simple = (map, key, amt, t) => {
     let g = map.get(key);
-    if (!g) { g = { name: key, amount: 0, txns: [], sub: new Map() }; map.set(key, g); }
+    if (!g) { g = { name: key, amount: 0, txns: [] }; map.set(key, g); }
     g.amount += amt; g.txns.push(t);
-    let s = g.sub.get(t._effcat); if (!s) { s = { name: t._effcat, amount: 0, txns: [] }; g.sub.set(t._effcat, s); }
-    s.amount += amt; s.txns.push(t);
-    return g;
+  };
+  // expense: a category group holding per-merchant NET sums (spend − refunds)
+  const addExpense = (cat, contribution, t) => {
+    const gk = matchAny(expKey, t) || (recurCats.has(cat) ? cat : GENERAL);
+    let g = expense.get(gk);
+    if (!g) { g = { name: gk, amount: 0, merchants: new Map() }; expense.set(gk, g); }
+    g.amount += contribution;
+    const mk = txKey(t);
+    let m = g.merchants.get(mk);
+    if (!m) { m = { key: mk, cat, amount: 0, txns: [] }; g.merchants.set(mk, m); }
+    m.amount += contribution; m.txns.push(t);
   };
 
   for (const t of monthTxns) {
     if (!t.amount) continue;
     const cat = effCategory(t, rules);
-    t._effcat = cat;
-    if (investCats.has(cat)) { bump(invest, cat, -t.amount, t); continue; }  // gone (outflow +, withdrawal −)
-    if (excluded.has(cat)) { bump(noncount, cat, Math.abs(t.amount), t); continue; }
+    if (investCats.has(cat)) { simple(invest, cat, -t.amount, t); continue; }  // gone
+    if (excluded.has(cat)) { simple(noncount, cat, Math.abs(t.amount), t); continue; }
     if (t.amount > 0) {
-      // real income = matched salary stream or an income-named category; everything
-      // else in (refunds, credits, family transfers) is a separate line, NOT salary.
-      const incName = matchAny(incKey, t) || (INCOME_RE.test(cat) ? cat : REFUNDS);
-      bump(income, incName, t.amount, t);
+      const sal = matchAny(incKey, t) || (INCOME_RE.test(cat) ? cat : null);
+      if (sal) simple(income, sal, t.amount, t);                 // salary stream
+      else if (paidMerchants.has(txKey(t))) addExpense(cat, -t.amount, t);  // refund → nets spend
+      else simple(income, txKey(t), t.amount, t);                // genuine other income, by name
     } else {
-      const flowCat = matchAny(expKey, t);
-      bump(expense, flowCat || (recurCats.has(cat) ? cat : GENERAL), -t.amount, t);
+      addExpense(cat, -t.amount, t);
     }
   }
 
   const byAmt = (a, b) => b.amount - a.amount;
   const byDate = (a, b) => (b.dateInt || 0) - (a.dateInt || 0);
-  const fin = (arr) => arr.sort(byAmt).map((g) => {
-    g.txns.sort(byDate);
-    g.subArr = [...g.sub.values()].sort(byAmt);
-    g.subArr.forEach((s) => s.txns.sort(byDate));
+  const finSimple = (map) => [...map.values()].sort(byAmt).map((g) => { g.txns.sort(byDate); return g; });
+  const expenseArr = [...expense.values()].sort(byAmt).map((g) => {
+    const merchants = [...g.merchants.values()];
+    merchants.forEach((m) => m.txns.sort(byDate));
+    merchants.sort(byAmt);
+    if (g.name === GENERAL) {
+      const subs = new Map();   // General drills into sub-categories → merchants
+      for (const m of merchants) {
+        let s = subs.get(m.cat); if (!s) { s = { name: m.cat, amount: 0, merchants: [] }; subs.set(m.cat, s); }
+        s.amount += m.amount; s.merchants.push(m);
+      }
+      g.subArr = [...subs.values()].sort(byAmt);
+    } else g.merchantArr = merchants;
     return g;
   });
-  const incomeArr = fin([...income.values()]);
-  const expenseArr = fin([...expense.values()]);
-  const investArr = fin([...invest.values()]);
-  const nonArr = fin([...noncount.values()]);
+  const incomeArr = finSimple(income);
+  const investArr = finSimple(invest);
+  const nonArr = finSimple(noncount);
   const totIn = incomeArr.reduce((s, g) => s + g.amount, 0);
   const totOut = expenseArr.reduce((s, g) => s + g.amount, 0);
   const totInvest = investArr.reduce((s, g) => s + g.amount, 0);
@@ -195,20 +213,27 @@ function buildMonthActuals(month, monthTxns, rules, excluded) {
            net: totIn - totOut - totInvest };
 }
 
-function spTx(t, cat) {
-  return `<button class="sp-tx" data-key="${enc(txKey(t))}" data-cat="${enc(cat)}">
+const txList = (txns, cat) => `<div class="bd-lines">${txns.map((t) =>
+  `<button class="sp-tx" data-key="${enc(txKey(t))}" data-cat="${enc(cat)}">
     <span class="sp-tx-name">${txKey(t)}</span>
     <span class="sp-tx-date">${t.date}</span>
     <span class="sp-tx-amt">${fmtGBP(Math.abs(t.amount))}</span>
+    <i data-lucide="tag"></i></button>`).join("")}</div>`;
+
+// A per-merchant NET line (spend − refunds). Shows the count when >1 txn; a net
+// credit (refunds exceeded spend) reads as +£ in mint. Tap to re-file.
+function merchantRow(m) {
+  const credit = m.amount < 0;
+  return `<button class="sp-tx" data-key="${enc(m.key)}" data-cat="${enc(m.cat)}">
+    <span class="sp-tx-name">${m.key}</span>
+    <span class="sp-tx-date">${m.txns.length > 1 ? m.txns.length + "×" : ""}</span>
+    <span class="sp-tx-amt"${credit ? ' style="color:var(--mint)"' : ""}>${credit ? "+" : "−"}${fmtGBP(Math.abs(m.amount))}</span>
     <i data-lucide="tag"></i></button>`;
 }
+const merchantList = (arr) => `<div class="bd-lines">${arr.map(merchantRow).join("")}</div>`;
 
-const txList = (txns, cat) => `<div class="bd-lines">${txns.map((t) => spTx(t, cat)).join("")}</div>`;
-
-// One expandable category group. General Expenses expands to its sub-categories
-// (each → transactions); every other group expands straight to transactions.
-// kind drives sign/tint/tag: income (+mint), out (−), invest (−violet, "invested"),
-// noncount (−, "not counted").
+// One expandable category group. Out groups expand to per-merchant sums (General
+// via its sub-categories first); income/invest/not-counted expand to txns.
 function catGroup(g, kind) {
   const prefix = { income: "i", out: "e", invest: "v", noncount: "n" }[kind];
   const key = `${prefix}:${g.name}`;
@@ -232,9 +257,11 @@ function catGroup(g, kind) {
           <button class="bd-cathead" data-gkey="${enc(sk)}">
             <i data-lucide="chevron-${sopen ? "down" : "right"}" class="bd-chev"></i>
             <span class="bd-catname">${s.name}</span>
-            <span class="bd-catamt">−${fmtGBP(s.amount)}</span>
-          </button>${sopen ? txList(s.txns, s.name) : ""}</div>`;
+            <span class="bd-catamt">${s.amount < 0 ? "+" : "−"}${fmtGBP(Math.abs(s.amount))}</span>
+          </button>${sopen ? merchantList(s.merchants) : ""}</div>`;
       }).join("");
+    } else if (kind === "out") {
+      body = merchantList(g.merchantArr);
     } else body = txList(g.txns, g.name);
   }
   return `<div class="bd-cat ${open ? "open" : ""} ${kind === "noncount" ? "notcount" : ""} ${kind === "invest" ? "invest" : ""}">

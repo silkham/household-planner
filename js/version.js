@@ -5,5 +5,5 @@
 //  can confirm which deployed build the browser actually loaded.
 //    major.minor.patch — minor tracks a shipped phase, patch a fix/tweak.
 // ============================================================================
-export const APP_VERSION = "1.15.0";  // 1.15.0 = Spending month: recurring categories split out of General (matches forecast); investment transfers called out as "gone" (in Net); income = salary only, refunds/credits separated
+export const APP_VERSION = "1.16.0";  // 1.16.0 = Spending drill-down shows per-merchant NET sums (refunds net against the merchant line, e.g. Vionic spend−returns); genuine non-refund inflows (family transfers) show as labelled Other income
 export const BUILD_DATE  = "2026-07-08";
