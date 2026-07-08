@@ -111,9 +111,30 @@ function buildChart(months) {
 // The known-bill carve-out mirrors reconcile.js (match on any identity field).
 const enc = encodeURIComponent;
 const GENERAL = "General Expenses";
+const REFUNDS = "Refunds & other in";
+const INCOME_RE = /salary|bonus|wages|\bincome\b/i;
+
+// Categories that ARE recurring/fixed payments → each gets its own Out line
+// (never swept into General). Defined by the household's recurring flows plus
+// any managed category named Recurring-/Subscription-. Keeps Spending consistent
+// with the forecast, which groups recurring flows by their category.
+function recurringCatSet() {
+  const s = new Set();
+  for (const f of state.recurring_flows)
+    if (f.kind === "expense" && f.category) s.add(f.category);
+  for (const c of state.categories)
+    if (/(recurring|subscription)/i.test(c.name)) s.add(c.name);
+  return s;
+}
+// Investment/savings transfers — "our cash but treat it as gone". Counted in Net
+// and called out separately (not lumped into the not-counted transfers).
+function investCatSet() {
+  const s = new Set(state.accounts.map((a) => a.contrib_category).filter(Boolean));
+  for (const c of state.categories) if (/^transfer\s*-/i.test(c.name)) s.add(c.name);
+  return s;
+}
 
 function buildMonthActuals(month, monthTxns, rules, excluded) {
-  // flows active in this month → their merchant keys, split by direction
   const flows = state.recurring_flows.filter((f) =>
     (!f.start_month || f.start_month <= month) && (!f.end_month || f.end_month >= month));
   const expKey = new Map();   // emma_match_key → expense flow category
@@ -125,24 +146,33 @@ function buildMonthActuals(month, monthTxns, rules, excluded) {
   }
   const matchAny = (map, t) =>
     map.get(t.customName) || map.get(t.merchant) || map.get(t.counterparty) || null;
+  const recurCats = recurringCatSet();
+  const investCats = investCatSet();
 
-  const income = new Map(), expense = new Map(), noncount = new Map();
+  const income = new Map(), expense = new Map(), invest = new Map(), noncount = new Map();
   const bump = (map, key, amt, t) => {
     let g = map.get(key);
     if (!g) { g = { name: key, amount: 0, txns: [], sub: new Map() }; map.set(key, g); }
     g.amount += amt; g.txns.push(t);
+    let s = g.sub.get(t._effcat); if (!s) { s = { name: t._effcat, amount: 0, txns: [] }; g.sub.set(t._effcat, s); }
+    s.amount += amt; s.txns.push(t);
     return g;
   };
 
   for (const t of monthTxns) {
+    if (!t.amount) continue;
     const cat = effCategory(t, rules);
-    if (excluded.has(cat)) { if (t.amount < 0) bump(noncount, cat, -t.amount, t); continue; }
-    if (t.amount > 0) { bump(income, matchAny(incKey, t) || "Other income", t.amount, t); }
-    else if (t.amount < 0) {
-      const g = bump(expense, matchAny(expKey, t) || GENERAL, -t.amount, t);
-      // sub-breakdown by effective category — only surfaced for General Expenses
-      let s = g.sub.get(cat); if (!s) { s = { name: cat, amount: 0, txns: [] }; g.sub.set(cat, s); }
-      s.amount += -t.amount; s.txns.push(t);
+    t._effcat = cat;
+    if (investCats.has(cat)) { bump(invest, cat, -t.amount, t); continue; }  // gone (outflow +, withdrawal −)
+    if (excluded.has(cat)) { bump(noncount, cat, Math.abs(t.amount), t); continue; }
+    if (t.amount > 0) {
+      // real income = matched salary stream or an income-named category; everything
+      // else in (refunds, credits, family transfers) is a separate line, NOT salary.
+      const incName = matchAny(incKey, t) || (INCOME_RE.test(cat) ? cat : REFUNDS);
+      bump(income, incName, t.amount, t);
+    } else {
+      const flowCat = matchAny(expKey, t);
+      bump(expense, flowCat || (recurCats.has(cat) ? cat : GENERAL), -t.amount, t);
     }
   }
 
@@ -156,10 +186,13 @@ function buildMonthActuals(month, monthTxns, rules, excluded) {
   });
   const incomeArr = fin([...income.values()]);
   const expenseArr = fin([...expense.values()]);
+  const investArr = fin([...invest.values()]);
   const nonArr = fin([...noncount.values()]);
   const totIn = incomeArr.reduce((s, g) => s + g.amount, 0);
   const totOut = expenseArr.reduce((s, g) => s + g.amount, 0);
-  return { incomeArr, expenseArr, nonArr, totIn, totOut, net: totIn - totOut };
+  const totInvest = investArr.reduce((s, g) => s + g.amount, 0);
+  return { incomeArr, expenseArr, investArr, nonArr, totIn, totOut, totInvest,
+           net: totIn - totOut - totInvest };
 }
 
 function spTx(t, cat) {
@@ -170,38 +203,45 @@ function spTx(t, cat) {
     <i data-lucide="tag"></i></button>`;
 }
 
-// One expandable "Out"/"Not counted" category group. General Expenses expands to
-// its sub-categories (each → transactions); everything else expands to txns.
-function outGroup(g, { general = false, notcount = false } = {}) {
-  const key = `${notcount ? "n" : "e"}:${g.name}`;
+const txList = (txns, cat) => `<div class="bd-lines">${txns.map((t) => spTx(t, cat)).join("")}</div>`;
+
+// One expandable category group. General Expenses expands to its sub-categories
+// (each → transactions); every other group expands straight to transactions.
+// kind drives sign/tint/tag: income (+mint), out (−), invest (−violet, "invested"),
+// noncount (−, "not counted").
+function catGroup(g, kind) {
+  const prefix = { income: "i", out: "e", invest: "v", noncount: "n" }[kind];
+  const key = `${prefix}:${g.name}`;
   const open = openCats.has(key);
+  const general = kind === "out" && g.name === GENERAL;
   const budget = ((state.settings && state.settings.forecast_budgets) || {})[GENERAL];
   const badge = general && budget != null
     ? `<span class="sp-budget ${g.amount > budget + 0.005 ? "over" : ""}">/ ${fmtGBP(budget)} budget</span>` : "";
-  const off = notcount ? ` <span class="sp-catoff">not counted</span>` : "";
+  const tag = kind === "invest" ? ` <span class="sp-catoff invest">invested</span>`
+    : kind === "noncount" ? ` <span class="sp-catoff">not counted</span>` : "";
+  const sign = kind === "income" ? "+" : "−";
+  const amtStyle = kind === "income" ? ' style="color:var(--mint)"'
+    : kind === "invest" ? ' style="color:var(--violet)"' : "";
+
   let body = "";
   if (open) {
     if (general) {
       body = g.subArr.map((s) => {
-        const sk = `s:${s.name}`;
-        const sopen = openCats.has(sk);
-        const stx = sopen ? `<div class="bd-lines">${s.txns.map((t) => spTx(t, s.name)).join("")}</div>` : "";
+        const sk = `s:${s.name}`, sopen = openCats.has(sk);
         return `<div class="bd-cat ${sopen ? "open" : ""}">
           <button class="bd-cathead" data-gkey="${enc(sk)}">
             <i data-lucide="chevron-${sopen ? "down" : "right"}" class="bd-chev"></i>
             <span class="bd-catname">${s.name}</span>
             <span class="bd-catamt">−${fmtGBP(s.amount)}</span>
-          </button>${stx}</div>`;
+          </button>${sopen ? txList(s.txns, s.name) : ""}</div>`;
       }).join("");
-    } else {
-      body = `<div class="bd-lines">${g.txns.map((t) => spTx(t, g.name)).join("")}</div>`;
-    }
+    } else body = txList(g.txns, g.name);
   }
-  return `<div class="bd-cat ${open ? "open" : ""} ${notcount ? "notcount" : ""}">
+  return `<div class="bd-cat ${open ? "open" : ""} ${kind === "noncount" ? "notcount" : ""} ${kind === "invest" ? "invest" : ""}">
     <button class="bd-cathead" data-gkey="${enc(key)}">
       <i data-lucide="chevron-${open ? "down" : "right"}" class="bd-chev"></i>
-      <span class="bd-catname">${g.name}${off}${badge}</span>
-      <span class="bd-catamt">−${fmtGBP(g.amount)}</span>
+      <span class="bd-catname">${g.name}${tag}${badge}</span>
+      <span class="bd-catamt"${amtStyle}>${sign}${fmtGBP(g.amount)}</span>
     </button>${body}</div>`;
 }
 
@@ -213,23 +253,17 @@ function monthPanelHtml(month, d) {
   </div>
   <div class="mr-nums">
     <span>Income <b style="color:var(--mint)">+${fmtGBP(d.totIn)}</b></span>
-    <span>Expenses <b style="color:var(--coral)">−${fmtGBP(d.totOut)}</b></span>
+    <span>Spent <b style="color:var(--coral)">−${fmtGBP(d.totOut)}</b></span>
+    ${d.totInvest > 0.5 ? `<span>Invested <b style="color:var(--violet)">−${fmtGBP(d.totInvest)}</b></span>` : ""}
   </div>`;
-
-  const incomeHtml = d.incomeArr.length
-    ? `<div class="bd-grp"><div class="bd-h">Income</div>${d.incomeArr.map((g) =>
-        `<div class="bd-row"><span>${g.name}</span><span>+${fmtGBP(g.amount)}</span></div>`).join("")}</div>`
-    : "";
-  const outHtml = d.expenseArr.length
-    ? `<div class="bd-grp"><div class="bd-h">Out</div>${d.expenseArr.map((g) =>
-        outGroup(g, { general: g.name === GENERAL })).join("")}</div>`
-    : "";
-  const nonHtml = d.nonArr.length
-    ? `<div class="bd-grp"><div class="bd-h">Not counted</div>${d.nonArr.map((g) =>
-        outGroup(g, { notcount: true })).join("")}</div>`
-    : "";
-
-  return `<div class="sp-month glass">${pos}${incomeHtml}${outHtml}${nonHtml}</div>`;
+  const section = (title, arr, kind) => arr.length
+    ? `<div class="bd-grp"><div class="bd-h">${title}</div>${arr.map((g) => catGroup(g, kind)).join("")}</div>` : "";
+  return `<div class="sp-month glass">${pos}
+    ${section("Income", d.incomeArr, "income")}
+    ${section("Out", d.expenseArr, "out")}
+    ${section("Savings & investments · treated as spent", d.investArr, "invest")}
+    ${section("Not counted", d.nonArr, "noncount")}
+  </div>`;
 }
 
 // ---- "needs a category" prompt ---------------------------------------------
