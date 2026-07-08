@@ -227,18 +227,18 @@ export function computeForecast(input) {
       const amt = effectiveAmount(f, mIdx, salary_changes, scenario)
         + linkedFlowDelta(f, mIdx, life_events);
       expenses += amt;
-      bd.expenses.push({ name: f.name, amount: amt, source: "recurring" });
+      bd.expenses.push({ name: f.name, amount: amt, source: "recurring", category: f.category || "Other" });
     }
     if (generalBudget > 0) {
       expenses += generalBudget;
-      bd.expenses.push({ name: "General expenses", amount: generalBudget, source: "budget" });
+      bd.expenses.push({ name: "General expenses", amount: generalBudget, source: "budget", category: "General Expenses" });
     }
     for (const f of activeLoans) {
       const sIdx = monthIndex(f.start_month);
       if (sIdx != null && mIdx >= sIdx && mIdx < sIdx + (Number(f.term_months) || 0)) {
         const amt = monthlyPayment(f);
         expenses += amt;
-        bd.expenses.push({ name: f.name + " payment", amount: amt, source: "loan" });
+        bd.expenses.push({ name: f.name + " payment", amount: amt, source: "loan", category: "Loan" });
       }
     }
     for (const e of life_events) {
@@ -246,7 +246,7 @@ export function computeForecast(input) {
       if (e.event_type !== "expense_change" || !lifeEventActive(e, mIdx)) continue;
       const amt = -(Number(e.monthly_impact) || 0); // −impact: worse (−) → more expense
       expenses += amt;
-      bd.expenses.push({ name: e.name, amount: amt, source: "life_event" });
+      bd.expenses.push({ name: e.name, amount: amt, source: "life_event", category: "Life events" });
     }
     let projectSpend = 0;
     for (const p of projects) {
@@ -255,7 +255,7 @@ export function computeForecast(input) {
       if (amt) {
         projectSpend += amt;
         expenses += amt;
-        bd.expenses.push({ name: p.name, amount: amt, source: "project", project_id: p.id });
+        bd.expenses.push({ name: p.name, amount: amt, source: "project", project_id: p.id, category: "Projects" });
       }
     }
 

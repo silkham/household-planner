@@ -5,5 +5,5 @@
 //  can confirm which deployed build the browser actually loaded.
 //    major.minor.patch — minor tracks a shipped phase, patch a fix/tweak.
 // ============================================================================
-export const APP_VERSION = "1.11.1";  // 1.11.1 = chart position is now a tap/hover callout (month·cash·net) defaulting to current month — native <title> tooltip didn't work on touch
+export const APP_VERSION = "1.11.2";  // 1.11.2 = forecast month breakdown "Out" list now grouped by category into collapsible dropdowns (engine breakdown items carry category)
 export const BUILD_DATE  = "2026-07-08";

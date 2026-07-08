@@ -175,6 +175,7 @@ const alertRow = (icon, tint, month, html) =>
 //  Monthly table (expandable rows)
 // ---------------------------------------------------------------------------
 let expanded = new Set();
+let expandedCat = new Set();   // "month::category" open in a month's Out breakdown
 
 function breakdownList(title, items, sign) {
   if (!items.length) return "";
@@ -183,6 +184,36 @@ function breakdownList(title, items, sign) {
     .map((it) => `<div class="bd-row"><span>${it.name}</span><span>${sign}${fmtGBP(Math.abs(it.amount))}</span></div>`)
     .join("");
   return rows ? `<div class="bd-grp"><div class="bd-h">${title}</div>${rows}</div>` : "";
+}
+
+// The "Out" list grouped by category, each category a collapsible dropdown —
+// the flat list got long once every recurring bill is in play.
+function expenseGroups(m) {
+  const items = m.breakdown.expenses.filter((it) => Math.abs(it.amount) > 0.5);
+  if (!items.length) return "";
+  const groups = new Map();
+  for (const it of items) {
+    const cat = it.category || "Other";
+    if (!groups.has(cat)) groups.set(cat, { cat, total: 0, items: [] });
+    const g = groups.get(cat);
+    g.total += Math.abs(it.amount);
+    g.items.push(it);
+  }
+  const rows = [...groups.values()].sort((a, b) => b.total - a.total).map((g) => {
+    const key = `${m.month}::${g.cat}`;
+    const open = expandedCat.has(key);
+    const lines = open
+      ? `<div class="bd-lines">${g.items.sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
+          .map((it) => `<div class="bd-row"><span>${it.name}</span><span>−${fmtGBP(Math.abs(it.amount))}</span></div>`).join("")}</div>`
+      : "";
+    return `<div class="bd-cat ${open ? "open" : ""}">
+      <button class="bd-cathead" data-catkey="${encodeURIComponent(key)}">
+        <i data-lucide="chevron-${open ? "down" : "right"}" class="bd-chev"></i>
+        <span class="bd-catname">${g.cat}</span>
+        <span class="bd-catamt">−${fmtGBP(g.total)}</span>
+      </button>${lines}</div>`;
+  }).join("");
+  return `<div class="bd-grp"><div class="bd-h">Out</div>${rows}</div>`;
 }
 
 function monthRow(m) {
@@ -197,7 +228,7 @@ function monthRow(m) {
         <span>Projects <b>${fmtGBP(m.project_spend)}</b></span>
       </div>
       ${breakdownList("Income", m.breakdown.income, "+")}
-      ${breakdownList("Out", m.breakdown.expenses, "−")}
+      ${expenseGroups(m)}
     </div>` : "";
   return `<div class="mrow ${cls} ${isOpen ? "open" : ""}" data-month="${m.month}">
     <button class="mr-head" data-toggle="${m.month}">
@@ -408,6 +439,14 @@ function render() {
     b.onclick = () => {
       const mo = b.dataset.toggle;
       expanded.has(mo) ? expanded.delete(mo) : expanded.add(mo);
+      render();
+    });
+
+  root.querySelectorAll("[data-catkey]").forEach((b) =>
+    b.onclick = (e) => {
+      e.stopPropagation();
+      const k = decodeURIComponent(b.dataset.catkey);
+      expandedCat.has(k) ? expandedCat.delete(k) : expandedCat.add(k);
       render();
     });
 
