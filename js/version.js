@@ -5,5 +5,5 @@
 //  can confirm which deployed build the browser actually loaded.
 //    major.minor.patch — minor tracks a shipped phase, patch a fix/tweak.
 // ============================================================================
-export const APP_VERSION = "1.11.2";  // 1.11.2 = forecast month breakdown "Out" list now grouped by category into collapsible dropdowns (engine breakdown items carry category)
+export const APP_VERSION = "1.11.3";  // 1.11.3 = chart hover repaints only the callout (no full re-render), so the line no longer re-animates on every hover
 export const BUILD_DATE  = "2026-07-08";

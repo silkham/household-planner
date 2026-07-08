@@ -22,6 +22,30 @@ const signed = (n) => (n < 0 ? "−" : "+") + fmtGBP(Math.abs(n));
 // Selected chart point (tap-to-show position). Defaults to the current month so
 // its cash/net is visible on load; touch has no hover, so this is tap-driven.
 let selPoint = 0;
+// Chart geometry cached so the callout can update IN PLACE on hover without a
+// full re-render (which would replay the line draw-on animation every hover).
+let coPts = [], coBounds = {};
+
+function calloutMarkup(i) {
+  const p = coPts[i];
+  if (!p) return "";
+  const { padL, padR, padT, bottom, W } = coBounds;
+  const l1 = shortMonth(p.month);
+  const l2 = `${fmtGBP(p.cash)} · ${signed(p.net)}`;
+  const bw = Math.max(96, l2.length * 7.2 + 20), bh = 38;
+  let bx = p.x - bw / 2;
+  bx = Math.max(padL, Math.min(W - padR - bw, bx));
+  let by = p.y - bh - 13;
+  if (by < padT) by = Math.min(bottom - bh - 2, p.y + 13);
+  const cxm = (bx + bw / 2).toFixed(1);
+  return `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="5" fill="none"
+      stroke="var(--violet)" stroke-width="2"/>
+    <g class="cf-callout">
+      <rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${bw.toFixed(1)}" height="${bh}" rx="8"/>
+      <text x="${cxm}" y="${(by + 15).toFixed(1)}" text-anchor="middle" class="cf-co-mon">${l1}</text>
+      <text x="${cxm}" y="${(by + 30).toFixed(1)}" text-anchor="middle" class="cf-co-val">${l2}</text>
+    </g>`;
+}
 
 // ---------------------------------------------------------------------------
 //  SVG chart — cash position over the horizon
@@ -82,28 +106,9 @@ function buildChart(fc) {
         <title>${tip}</title></circle>`;
   }).join("");
 
-  // Tap/click callout — shows the selected point's position (month · cash · net).
-  let callout = "";
-  const sp = selPoint;
-  if (sp != null && sp >= 0 && sp < n) {
-    const m = ms[sp], px = x(sp), py = y(m.cash);
-    const l1 = shortMonth(m.month);
-    const l2 = `${fmtGBP(m.cash)} · ${signed(m.net)}`;
-    const bw = Math.max(96, l2.length * 7.2 + 20), bh = 38;
-    let bx = px - bw / 2;
-    bx = Math.max(padL, Math.min(W - padR - bw, bx));
-    let by = py - bh - 13;
-    if (by < padT) by = Math.min(bottom - bh - 2, py + 13);
-    const cxm = (bx + bw / 2).toFixed(1);
-    callout = `
-      <circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="5" fill="none"
-        stroke="var(--violet)" stroke-width="2"/>
-      <g class="cf-callout">
-        <rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${bw.toFixed(1)}" height="${bh}" rx="8"/>
-        <text x="${cxm}" y="${(by + 15).toFixed(1)}" text-anchor="middle" class="cf-co-mon">${l1}</text>
-        <text x="${cxm}" y="${(by + 30).toFixed(1)}" text-anchor="middle" class="cf-co-val">${l2}</text>
-      </g>`;
-  }
+  // Cache point geometry so hover can repaint only the callout (no re-render).
+  coPts = ms.map((m, i) => ({ x: x(i), y: y(m.cash), month: m.month, cash: m.cash, net: m.net }));
+  coBounds = { padL, padR, padT, bottom, W };
 
   // circle the lowest point and annotate it
   let low = 0;
@@ -141,7 +146,7 @@ function buildChart(fc) {
     <path class="spark-line" d="${linePath}" fill="none" stroke="var(--mint)"
       stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"
       pathLength="1000" filter="url(#cfGlow)"/>
-    ${dots}${low_}${callout}
+    ${dots}${low_}<g class="cf-co-slot">${selPoint != null ? calloutMarkup(selPoint) : ""}</g>
   </svg>`;
 }
 
@@ -428,9 +433,16 @@ function render() {
 
   wireReconcile(root);
 
-  // Chart points — hover (laptop) or tap (touch) pins the position callout.
+  // Chart points — hover (laptop) or tap (touch) repaints ONLY the callout slot,
+  // so the line never re-animates on hover.
+  const slot = root.querySelector(".cf-co-slot");
   root.querySelectorAll(".cf-hit").forEach((c) => {
-    const set = () => { const i = +c.dataset.pt; if (selPoint !== i) { selPoint = i; render(); } };
+    const set = () => {
+      const i = +c.dataset.pt;
+      if (selPoint === i) return;
+      selPoint = i;
+      if (slot) slot.innerHTML = calloutMarkup(i);
+    };
     c.addEventListener("mouseenter", set);
     c.addEventListener("click", set);
   });
