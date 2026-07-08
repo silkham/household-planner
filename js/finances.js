@@ -2,7 +2,7 @@
 //  finances.js — the Finances tab. Six sections, each backed by a table and
 //  the shared bottom-sheet. Field schemas are data-driven; cards are per-type.
 // ============================================================================
-import { state, subscribe } from "./store.js";
+import { state, subscribe, saveRow } from "./store.js";
 import { openSheet, fmtGBP, fmtMonth } from "./sheet.js";
 import { monthlyPayment } from "./engine.js";
 import { syncBalancesFromEmma, cachedEmmaTxns } from "./emma.js";
@@ -92,6 +92,19 @@ const SCHEMAS = {
     ],
     impact: (d) => `${d.kind === "income" ? "+" : "−"}${fmtGBP(d.amount)}/mo from ${fmtMonth(d.start_month)}`
       + (d.annual_uplift_pct ? ` · +${(d.annual_uplift_pct * 100).toFixed(1)}%/yr` : ""),
+    // Save the flow, then keep the Spending side in step: an Emma-linked flow
+    // upserts a category_rule on its merchant so past & future transactions
+    // re-bucket to the flow's category (the two category systems stay synced).
+    save: async (clean) => {
+      await saveRow("recurring_flows", clean);
+      if (clean.emma_match_key && clean.category) {
+        const existing = state.category_rules.find((r) => r.match_key === clean.emma_match_key);
+        await saveRow("category_rules", {
+          ...(existing ? { id: existing.id } : {}),
+          match_key: clean.emma_match_key, category: clean.category,
+        });
+      }
+    },
   },
 
   salary_changes: {
@@ -176,7 +189,7 @@ function edit(entity, record) {
   const s = SCHEMAS[entity];
   openSheet({
     title: record.id ? s.title : "New " + s.title.toLowerCase(),
-    table: s.table, typeField: s.typeField, fields: s.fields, derive: s.derive,
+    table: s.table, typeField: s.typeField, fields: s.fields, derive: s.derive, save: s.save,
     record: record.id ? record : { ...s.blank },
     impact: s.impact,
     onDone: render,
@@ -190,7 +203,7 @@ export function openRecurringSheet(record, onDone) {
   const s = SCHEMAS.recurring_flows;
   openSheet({
     title: record.id ? s.title : "New recurring flow",
-    table: s.table, fields: s.fields,
+    table: s.table, fields: s.fields, save: s.save,
     record: record.id ? record : { ...s.blank, ...record },
     impact: s.impact,
     onDone: () => { render(); onDone && onDone(); },

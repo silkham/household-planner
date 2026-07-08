@@ -557,6 +557,21 @@ main { flex: 1; padding: 20px 18px 108px; }
 .cat-move svg { width: 15px; height: 15px; }
 .cat-add { display: flex; gap: 8px; margin-top: 6px; }
 .cat-add .field { flex: 1; }
+/* merchant multi-select mover (category Move sheet) */
+.pick-head { display: flex; align-items: center; justify-content: space-between;
+  margin: 4px 0 8px; }
+.pick-count { font-size: 12.5px; color: var(--text-faint); }
+.pick-all { border: none; background: none; cursor: pointer; font-size: 12.5px;
+  font-weight: 600; color: var(--violet); padding: 2px 4px; }
+.pick-list { display: flex; flex-direction: column; gap: 6px;
+  max-height: 46vh; overflow-y: auto; }
+.pick-row { display: flex; align-items: center; gap: 10px; padding: 8px 11px;
+  background: var(--card); border: 1px solid var(--hairline); border-radius: var(--r-ctrl);
+  cursor: pointer; }
+.pick-row input { width: 17px; height: 17px; accent-color: var(--violet); flex: none; }
+.pick-name { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pick-meta { font-size: 12px; color: var(--text-faint); white-space: nowrap; flex: none; }
 .cat-addbtn { display: inline-flex; align-items: center; gap: 4px; padding: 0 15px; border-radius: var(--r-ctrl);
   border: none; cursor: pointer; background: var(--violet); color: #fff;
   font-family: var(--font-body); font-weight: 600; font-size: 13px; white-space: nowrap; }

@@ -9,7 +9,7 @@
 //  and recurring detection so both agree on what counts.
 // ============================================================================
 import { state, saveRow, saveSettings, bulkReassignRules } from "./store.js";
-import { openSheet } from "./sheet.js";
+import { openSheet, fmtGBP } from "./sheet.js";
 
 // Non-counting unless a managed row explicitly flips them — Emma's own
 // convention (Excluded) plus internal moves (Transfers).
@@ -90,45 +90,93 @@ function suggestedBudget(txns) {
   return Math.round(total / byMonth.size / 10) * 10;   // nearest £10
 }
 
-// distinct rule-keys whose EFFECTIVE category is `sourceName` right now.
-function merchantsIn(sourceName, txns, rules) {
-  const keys = new Set();
-  for (const t of txns) {
+// Per-merchant aggregates for every merchant whose EFFECTIVE category is
+// `sourceName` right now → [{ key, count, total }] sorted by spend desc.
+function merchantAgg(sourceName, txns, rules) {
+  const agg = new Map();
+  const bump = (key, amt) => {
+    const a = agg.get(key) || { key, count: 0, total: 0 };
+    a.count += 1; a.total += Math.abs(amt || 0);
+    agg.set(key, a);
+  };
+  for (const t of txns)
     if (effectiveCategory(t, rules).toLowerCase() === sourceName.toLowerCase())
-      keys.add(txnKey(t));
-  }
-  // also pick up any existing rule pointing AT the source (merchant may have no
-  // txn in the current feed window)
+      bump(txnKey(t), t.amount);
+  // include rules pointing AT the source whose merchant has no txn in the window
   for (const r of state.category_rules)
-    if (r.category.toLowerCase() === sourceName.toLowerCase()) keys.add(r.match_key);
-  return [...keys];
+    if (r.category.toLowerCase() === sourceName.toLowerCase() && !agg.has(r.match_key))
+      agg.set(r.match_key, { key: r.match_key, count: 0, total: 0 });
+  return [...agg.values()].sort((a, b) => b.total - a.total);
 }
 
-// Merge/delete sheet: re-bucket a whole category's merchants at once.
+// Merge/delete sheet: tick the merchants to move, pick a target. All ticked by
+// default, so leaving it untouched moves the whole category (and drops the
+// source row). Move only some → the source category keeps the rest.
 function openReassign(sourceName, txns, onDone) {
   const rules = rulesMap();
   const m = managedFor(sourceName);
-  const keys = merchantsIn(sourceName, txns, rules);
+  const merchants = merchantAgg(sourceName, txns, rules);
   const targets = categoryNames(state.categories, txns, rules)
     .filter((n) => n.toLowerCase() !== sourceName.toLowerCase());
   if (!targets.some((n) => n.toLowerCase() === "uncategorised")) targets.unshift("Uncategorised");
   const options = targets.map((n) => ({ value: n, label: n }));
+  const sel = new Set(merchants.map((x) => x.key));  // all selected initially
 
   openSheet({
-    title: `Move “${sourceName}”`,
-    record: { target: "Uncategorised" },
+    title: `Move from “${sourceName}”`,
+    record: { target: "Uncategorised", _new: "" },
     fields: [
-      { key: "target", label: "Move all transactions to", type: "select", options,
-        help: `Re-buckets ${keys.length} merchant${keys.length === 1 ? "" : "s"} across every month. Pick “Uncategorised” to clear it out.` },
+      { key: "target", label: "Move selected to", type: "select", options },
       { key: "_new", label: "…or type a new category", type: "text", placeholder: "e.g. Subscriptions" },
     ],
+    extra: (box) => {
+      box.innerHTML = merchants.length
+        ? `<div class="pick-head"><span class="pick-count"></span>
+             <button type="button" class="pick-all"></button></div>
+           <div class="pick-list"></div>`
+        : `<div class="sec-empty">No transactions in this category — saving deletes the empty bucket.</div>`;
+      if (!merchants.length) return;
+      const list = box.querySelector(".pick-list");
+      const countEl = box.querySelector(".pick-count");
+      const allBtn = box.querySelector(".pick-all");
+      const refresh = () => {
+        countEl.textContent = `${sel.size} of ${merchants.length} selected`;
+        allBtn.textContent = sel.size === merchants.length ? "Select none" : "Select all";
+      };
+      merchants.forEach((x) => {
+        const row = document.createElement("label");
+        row.className = "pick-row";
+        const meta = x.count ? `${x.count} txn · ${fmtGBP(x.total)}` : "rule only";
+        row.innerHTML = `<input type="checkbox" ${sel.has(x.key) ? "checked" : ""}/>
+          <span class="pick-name">${x.key}</span><span class="pick-meta">${meta}</span>`;
+        row.querySelector("input").onchange = (e) => {
+          e.target.checked ? sel.add(x.key) : sel.delete(x.key);
+          refresh();
+        };
+        list.appendChild(row);
+      });
+      allBtn.onclick = () => {
+        const all = sel.size === merchants.length;
+        sel.clear();
+        if (!all) merchants.forEach((x) => sel.add(x.key));
+        list.querySelectorAll("input").forEach((inp, i) => { inp.checked = sel.has(merchants[i].key); });
+        refresh();
+      };
+      refresh();
+    },
     saveLabel: "Move",
     save: async (clean) => {
+      const keys = [...sel];
+      if (!keys.length && !m) throw new Error("Select at least one merchant.");
       const target = ((clean._new || "").trim()) || clean.target;
-      if (!target) throw new Error("Pick or name a target category.");
-      if (target.toLowerCase() === sourceName.toLowerCase()) throw new Error("Pick a different category.");
+      if (keys.length) {
+        if (!target) throw new Error("Pick or name a target category.");
+        if (target.toLowerCase() === sourceName.toLowerCase()) throw new Error("Pick a different category.");
+      }
       const ruleRows = keys.map((k) => ({ match_key: k, category: target }));
-      await bulkReassignRules(ruleRows, m ? m.id : null);
+      // drop the source managed row only when the WHOLE category moved out
+      const movedAll = keys.length === merchants.length;
+      await bulkReassignRules(ruleRows, (movedAll && m) ? m.id : null);
     },
     onDone,
   });
