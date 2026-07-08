@@ -5,5 +5,5 @@
 //  can confirm which deployed build the browser actually loaded.
 //    major.minor.patch — minor tracks a shipped phase, patch a fix/tweak.
 // ============================================================================
-export const APP_VERSION = "1.11.0";  // 1.11.0 = This-month Projects group in Forecast reconcile; chart-dot hover tooltip; Spending transaction search (all txns, incl. non-counting); +665-merchant category-rule import (live DB)
+export const APP_VERSION = "1.11.1";  // 1.11.1 = chart position is now a tap/hover callout (month·cash·net) defaulting to current month — native <title> tooltip didn't work on touch
 export const BUILD_DATE  = "2026-07-08";

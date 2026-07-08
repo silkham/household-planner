@@ -19,6 +19,10 @@ const shortMonth = (ym) => {
 };
 const signed = (n) => (n < 0 ? "−" : "+") + fmtGBP(Math.abs(n));
 
+// Selected chart point (tap-to-show position). Defaults to the current month so
+// its cash/net is visible on load; touch has no hover, so this is tap-driven.
+let selPoint = 0;
+
 // ---------------------------------------------------------------------------
 //  SVG chart — cash position over the horizon
 // ---------------------------------------------------------------------------
@@ -74,9 +78,32 @@ function buildChart(fc) {
     const tip = `${shortMonth(m.month)} · cash ${fmtGBP(m.cash)} · net ${signed(m.net)}`;
     return `<circle cx="${cx}" cy="${cy}" r="${r}"
       fill="var(--${tint})" ${neg ? 'class="pt-danger"' : ""}/>
-      <circle cx="${cx}" cy="${cy}" r="11" fill="transparent" style="cursor:pointer">
+      <circle class="cf-hit" data-pt="${i}" cx="${cx}" cy="${cy}" r="12" fill="transparent" style="cursor:pointer">
         <title>${tip}</title></circle>`;
   }).join("");
+
+  // Tap/click callout — shows the selected point's position (month · cash · net).
+  let callout = "";
+  const sp = selPoint;
+  if (sp != null && sp >= 0 && sp < n) {
+    const m = ms[sp], px = x(sp), py = y(m.cash);
+    const l1 = shortMonth(m.month);
+    const l2 = `${fmtGBP(m.cash)} · ${signed(m.net)}`;
+    const bw = Math.max(96, l2.length * 7.2 + 20), bh = 38;
+    let bx = px - bw / 2;
+    bx = Math.max(padL, Math.min(W - padR - bw, bx));
+    let by = py - bh - 13;
+    if (by < padT) by = Math.min(bottom - bh - 2, py + 13);
+    const cxm = (bx + bw / 2).toFixed(1);
+    callout = `
+      <circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="5" fill="none"
+        stroke="var(--violet)" stroke-width="2"/>
+      <g class="cf-callout">
+        <rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${bw.toFixed(1)}" height="${bh}" rx="8"/>
+        <text x="${cxm}" y="${(by + 15).toFixed(1)}" text-anchor="middle" class="cf-co-mon">${l1}</text>
+        <text x="${cxm}" y="${(by + 30).toFixed(1)}" text-anchor="middle" class="cf-co-val">${l2}</text>
+      </g>`;
+  }
 
   // circle the lowest point and annotate it
   let low = 0;
@@ -114,7 +141,7 @@ function buildChart(fc) {
     <path class="spark-line" d="${linePath}" fill="none" stroke="var(--mint)"
       stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"
       pathLength="1000" filter="url(#cfGlow)"/>
-    ${dots}${low_}
+    ${dots}${low_}${callout}
   </svg>`;
 }
 
@@ -369,6 +396,13 @@ function render() {
     <div class="cf-table">${fc.months.map(monthRow).join("")}</div>`;
 
   wireReconcile(root);
+
+  // Chart points — hover (laptop) or tap (touch) pins the position callout.
+  root.querySelectorAll(".cf-hit").forEach((c) => {
+    const set = () => { const i = +c.dataset.pt; if (selPoint !== i) { selPoint = i; render(); } };
+    c.addEventListener("mouseenter", set);
+    c.addEventListener("click", set);
+  });
 
   root.querySelectorAll("[data-toggle]").forEach((b) =>
     b.onclick = () => {
