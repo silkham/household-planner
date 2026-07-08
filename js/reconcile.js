@@ -128,6 +128,41 @@ export function reconcileMonth(opts = {}) {
   const income = knownGroups("income");
   const expense = knownGroups("expense");
 
+  // ---- Bonuses hitting this month fold into the Income group (so the card
+  // matches the forecast, which counts bonuses as income). No emma_match_key,
+  // so they read as "to come" (amber) until they land. Realistic filter:
+  // confirmed + likely, mirroring the engine default.
+  const bonusHits = (b, m) => {
+    if (!b.expected_month) return false;
+    if (b.recurs_annually) {
+      const [ey, em] = String(b.expected_month).split("-");
+      const [my, mm] = String(m).split("-");
+      return em === mm && my >= ey;
+    }
+    return b.expected_month === m;
+  };
+  const bonusLines = (opts.bonuses || [])
+    .filter((b) => (Number(b.net_amount) || 0) > 0
+      && (b.confidence === "confirmed" || b.confidence === "likely" || !b.confidence)
+      && bonusHits(b, month))
+    .map((b) => ({ id: "bonus:" + (b.id || b.name), name: b.name, isBonus: true,
+      expected: round2(Number(b.net_amount) || 0), actual: 0, received: false, txns: [] }));
+  if (bonusLines.length) {
+    let g = income.find((x) => x.name === "Income");
+    if (!g) {
+      g = { name: "Income", kind: "income", type: "flows",
+        expected: 0, actual: 0, pendingExpected: 0, over: false, lines: [] };
+      income.push(g);
+    }
+    for (const bl of bonusLines) {
+      g.lines.push(bl);
+      g.expected = round2(g.expected + bl.expected);
+      g.pendingExpected = round2(g.pendingExpected + bl.expected);
+    }
+    g.lines.sort((a, b) => b.expected - a.expected);
+    income.sort((a, b) => b.expected - a.expected);
+  }
+
   // ---- General Expenses: counting outflows NOT tied to a known bill --------
   const genTxns = monthTxns.filter((t) => t.amount < 0 && !txIsKnown(t));
   const catMap = new Map();

@@ -178,6 +178,33 @@ const catOf = (g, name) => g && g.categories.find((c) => c.name === name);
   eq(lineOf(gInc(res, "Income"), "Lachlan Salary").received, true, "flow matched via merchant field");
 }
 
+// ---- 10. a bonus hitting this month folds into the Income group ------------
+{
+  const res = reconcileMonth({
+    month: MONTH, txns: [],
+    recurring_flows: [{ id: "c", name: "Christine Salary", kind: "income", amount: 3200, category: "Salary", emma_match_key: "X" }],
+    bonuses: [
+      { id: "b1", name: "Christine bonus", net_amount: 14000, confidence: "confirmed", expected_month: "2026-08" },
+      { id: "b2", name: "Other-month bonus", net_amount: 5000, confidence: "confirmed", expected_month: "2026-09" },
+      { id: "b3", name: "Speculative bonus", net_amount: 9000, confidence: "speculative", expected_month: "2026-08" },
+    ],
+  });
+  const g = gInc(res, "Income");
+  eq(g.expected, 17200, "bonus folds into Income expected (salary + this-month confirmed bonus)");
+  ok(!!lineOf(g, "Christine bonus") && lineOf(g, "Christine bonus").isBonus, "bonus appears as an isBonus line");
+  ok(!lineOf(g, "Other-month bonus"), "a bonus for a different month is excluded");
+  ok(!lineOf(g, "Speculative bonus"), "a speculative bonus is excluded (realistic filter)");
+}
+
+// ---- 11. annual bonus matches on month-of-year -----------------------------
+{
+  const res = reconcileMonth({
+    month: "2027-08", txns: [], recurring_flows: [],
+    bonuses: [{ id: "b", name: "Annual", net_amount: 1000, confidence: "likely", expected_month: "2026-08", recurs_annually: true }],
+  });
+  ok(!!lineOf(gInc(res, "Income"), "Annual"), "recurring annual bonus matches same month next year");
+}
+
 // ---- summary ---------------------------------------------------------------
 log(`\nreconcile: ${PASS} passed, ${FAIL} failed`);
 if (FAIL > 0) { if (typeof process !== "undefined") process.exit(1); throw new Error(`${FAIL} failing`); }

@@ -5,5 +5,5 @@
 //  can confirm which deployed build the browser actually loaded.
 //    major.minor.patch — minor tracks a shipped phase, patch a fix/tweak.
 // ============================================================================
-export const APP_VERSION = "1.11.3";  // 1.11.3 = chart hover repaints only the callout (no full re-render), so the line no longer re-animates on every hover
+export const APP_VERSION = "1.11.4";  // 1.11.4 = "This month" card Income now includes bonuses hitting this month (amber "bonus", to-come), so the card matches the forecast income total
 export const BUILD_DATE  = "2026-07-08";

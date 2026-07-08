@@ -272,10 +272,12 @@ function flowLine(g, line) {
   const path = `l:${g.kind}:${g.name}:${line.id}`;
   const canExpand = line.txns.length > 0;
   const open = canExpand && rcExpanded.has(path);
-  const word = g.kind === "income"
-    ? (line.received ? "received" : "not in")
-    : (line.received ? "paid" : "due");
-  const tag = `<span class="rc-tag ${line.received ? "mint" : "coral"}">${word}</span>`;
+  const word = line.isBonus
+    ? "bonus"
+    : g.kind === "income"
+      ? (line.received ? "received" : "not in")
+      : (line.received ? "paid" : "due");
+  const tag = `<span class="rc-tag ${line.isBonus ? "amber" : line.received ? "mint" : "coral"}">${word}</span>`;
   const nums = line.received
     ? `<b style="color:var(--mint)">${fmtGBP(line.actual)}</b> <span class="rc-exp">/ ${fmtGBP(line.expected)}</span>`
     : `<b style="color:var(--coral)">${fmtGBP(line.expected)}</b>`;
@@ -288,7 +290,7 @@ function flowLine(g, line) {
       <button class="rc-chead" data-rc="${encodeURIComponent(path)}">
         ${chev}<span class="rc-cname">${line.name}</span>${tag}<span class="rc-nums">${nums}</span>
       </button>
-      <button class="rc-edit" data-flow="${line.id}" title="Edit recurring flow"><i data-lucide="pencil"></i></button>
+      ${line.isBonus ? "" : `<button class="rc-edit" data-flow="${line.id}" title="Edit recurring flow"><i data-lucide="pencil"></i></button>`}
     </div>${txns}</div>`;
 }
 
@@ -371,6 +373,7 @@ function buildReconcile(fc) {
     const r = reconcileMonth({
       month, txns: rcFeed.txns,
       recurring_flows: state.recurring_flows,
+      bonuses: state.bonuses,
       category_rules: state.category_rules,
       budgets: (state.settings && state.settings.forecast_budgets) || {},
       excluded: buildExcludedSet(state.categories),
