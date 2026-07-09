@@ -542,6 +542,14 @@ main { flex: 1; padding: 20px 18px 108px; }
 .sp-budget.over { color: var(--coral); }
 .sp-month .bd-cat.notcount { opacity: .72; }
 .sp-month .bd-cat.notcount .bd-catname { color: var(--text-dim); }
+/* nested drill-down (General → sub-categories) — indent + de-emphasise so a
+   child (Holiday, Groceries…) reads clearly below its parent, not as a sibling
+   of the top-level recurring lines. */
+.sp-month .bd-cat .bd-cat { border-bottom: none; padding-left: 22px; }
+.sp-month .bd-cat .bd-cat .bd-cathead { padding: 5px 0; }
+.sp-month .bd-cat .bd-cat .bd-catname { font-weight: 400; font-size: 12.5px; color: var(--text-dim); }
+.sp-month .bd-cat .bd-cat .bd-catamt { font-weight: 500; color: var(--text-faint); }
+.sp-month .bd-cat .bd-cat .bd-chev { width: 13px; height: 13px; }
 .sp-catoff.invest { color: var(--violet); border-color: color-mix(in srgb, var(--violet) 40%, transparent); }
 .sp-month .bd-cat.invest .bd-catname { color: var(--text); }
 .sp-tx { width: 100%; display: grid; grid-template-columns: 1fr auto auto 16px; align-items: center; gap: 10px;

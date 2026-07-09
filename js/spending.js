@@ -152,8 +152,8 @@ function buildMonthActuals(month, monthTxns, rules, excluded) {
   const paidMerchants = new Set();
   for (const t of (txns || [])) if (t.amount < 0) paidMerchants.add(txKey(t));
 
-  const income = new Map(), expense = new Map(), invest = new Map(), noncount = new Map();
-  // simple {name, amount, txns} bucket (income / invest / not-counted)
+  const salary = new Map(), other = new Map(), expense = new Map(), invest = new Map(), noncount = new Map();
+  // simple {name, amount, txns} bucket (salary / invest / not-counted)
   const simple = (map, key, amt, t) => {
     let g = map.get(key);
     if (!g) { g = { name: key, amount: 0, txns: [] }; map.set(key, g); }
@@ -178,9 +178,14 @@ function buildMonthActuals(month, monthTxns, rules, excluded) {
     if (excluded.has(cat)) { simple(noncount, cat, Math.abs(t.amount), t); continue; }
     if (t.amount > 0) {
       const sal = matchAny(incKey, t) || (INCOME_RE.test(cat) ? cat : null);
-      if (sal) simple(income, sal, t.amount, t);                 // salary stream
+      if (sal) simple(salary, sal, t.amount, t);                 // salary stream → own line
       else if (paidMerchants.has(txKey(t))) addExpense(cat, -t.amount, t);  // refund → nets spend
-      else simple(income, txKey(t), t.amount, t);                // genuine other income, by name
+      else {                                                     // genuine other income
+        const k = txKey(t);
+        let g = other.get(k);
+        if (!g) { g = { key: k, name: k, cat, amount: 0, txns: [] }; other.set(k, g); }
+        g.amount += t.amount; g.txns.push(t);
+      }
     } else {
       addExpense(cat, -t.amount, t);
     }
@@ -203,7 +208,17 @@ function buildMonthActuals(month, monthTxns, rules, excluded) {
     } else g.merchantArr = merchants;
     return g;
   });
-  const incomeArr = finSimple(income);
+  // Income = matched salary streams (each its own line) + one collapsible
+  // "Other income" group holding every genuine non-salary, non-refund inflow.
+  const salaryArr = finSimple(salary);
+  const otherArr = [...other.values()].sort(byAmt);
+  otherArr.forEach((s) => s.txns.sort(byDate));
+  const otherGroup = otherArr.length ? {
+    name: "Other income",
+    amount: otherArr.reduce((s, g) => s + g.amount, 0),
+    sources: otherArr,
+  } : null;
+  const incomeArr = otherGroup ? [...salaryArr, otherGroup] : salaryArr;
   const investArr = finSimple(invest);
   const nonArr = finSimple(noncount);
   const totIn = incomeArr.reduce((s, g) => s + g.amount, 0);
@@ -231,6 +246,17 @@ function merchantRow(m) {
     <i data-lucide="tag"></i></button>`;
 }
 const merchantList = (arr) => `<div class="bd-lines">${arr.map(merchantRow).join("")}</div>`;
+
+// A per-source line inside the "Other income" group (positive inflow, mint).
+// Tap to re-file (e.g. if a source is actually a refund or belongs elsewhere).
+function incomeSourceRow(s) {
+  return `<button class="sp-tx" data-key="${enc(s.key)}" data-cat="${enc(s.cat)}">
+    <span class="sp-tx-name">${s.key}</span>
+    <span class="sp-tx-date">${s.txns.length > 1 ? s.txns.length + "×" : ""}</span>
+    <span class="sp-tx-amt" style="color:var(--mint)">+${fmtGBP(s.amount)}</span>
+    <i data-lucide="tag"></i></button>`;
+}
+const incomeSourceList = (arr) => `<div class="bd-lines">${arr.map(incomeSourceRow).join("")}</div>`;
 
 // One expandable category group. Out groups expand to per-merchant sums (General
 // via its sub-categories first); income/invest/not-counted expand to txns.
@@ -262,6 +288,8 @@ function catGroup(g, kind) {
       }).join("");
     } else if (kind === "out") {
       body = merchantList(g.merchantArr);
+    } else if (g.sources) {
+      body = incomeSourceList(g.sources);   // "Other income" → per-source lines
     } else body = txList(g.txns, g.name);
   }
   return `<div class="bd-cat ${open ? "open" : ""} ${kind === "noncount" ? "notcount" : ""} ${kind === "invest" ? "invest" : ""}">
