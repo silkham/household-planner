@@ -108,10 +108,10 @@ export function effectiveAmount(flow, mIdx, salaryChanges, scenario) {
 // ---- project spend ---------------------------------------------------------
 const PROJECT_ACTIVE_STATUSES = new Set(["Planned", "Quoted", "In Progress"]);
 
-// project_cost_in_month: if a cost_spread override exists it is AUTHORITATIVE
+// planned_cost_in_month: if a cost_spread override exists it is AUTHORITATIVE
 // (months absent from it contribute 0 — no even-split fallthrough, or the total
 // would exceed estimated_cost). Otherwise split evenly over the duration.
-export function projectCostInMonth(p, mIdx) {
+export function plannedCostInMonth(p, mIdx) {
   const spread = p.cost_spread;
   if (spread && typeof spread === "object" && Object.keys(spread).length) {
     return Number(spread[fromIndex(mIdx)]) || 0;
@@ -123,6 +123,21 @@ export function projectCostInMonth(p, mIdx) {
     return (Number(p.estimated_cost) || 0) / dur;
   }
   return 0;
+}
+
+// project_cost_in_month: what the forecast still expects to spend in month M.
+// Actuals already hit (project.actual_cost, derived from line items / linked
+// transactions) have ALSO already left the account — they're baked into the
+// opening cash via the Emma balance sync. So we must NOT re-deduct them here;
+// instead they SHRINK the remaining plan. Every planned month is scaled by
+// remaining/estimate, so the forecast only chases the money still to come.
+export function projectCostInMonth(p, mIdx) {
+  const base = plannedCostInMonth(p, mIdx);
+  if (!base) return 0;
+  const est = Number(p.estimated_cost) || 0;
+  const act = Number(p.actual_cost) || 0;
+  if (est <= 0 || act <= 0) return base;          // nothing spent yet → full plan
+  return base * (Math.max(0, est - act) / est);   // shrink by what's already hit
 }
 
 // ---- bonuses ---------------------------------------------------------------

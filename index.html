@@ -406,6 +406,27 @@ main { flex: 1; padding: 20px 18px 108px; }
 .sp-row span { font-size: 13px; color: var(--text-dim); }
 .sp-in { max-width: 140px; text-align: right; }
 
+/* linked transactions (line-item sheet) */
+.lx-list { display: flex; flex-direction: column; gap: 6px; }
+.lx { display: flex; align-items: center; gap: 10px; padding: 9px 11px;
+      border: 1px solid var(--hairline); border-radius: var(--r-ctrl); background: var(--card); }
+.lx-main { flex: 1; min-width: 0; }
+.lx-name { display: block; font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lx-date { display: block; font-size: 11.5px; color: var(--text-faint); margin-top: 2px; }
+.lx-amt { font-family: var(--font-head); font-weight: 500; font-size: 13.5px; color: var(--coral); white-space: nowrap; }
+.lx-del { flex: none; width: 28px; height: 28px; display: grid; place-items: center; cursor: pointer;
+          border: 1px solid var(--hairline); border-radius: 8px; background: none; color: var(--text-faint); }
+.lx-del svg { width: 15px; height: 15px; }
+.lx-search { margin-top: 10px; }
+.lx-results { display: flex; flex-direction: column; gap: 5px; margin-top: 6px; }
+.lx-res { display: flex; align-items: center; gap: 10px; padding: 9px 11px; cursor: pointer; text-align: left;
+          border: 1px solid var(--hairline); border-radius: var(--r-ctrl); background: var(--card);
+          color: var(--text); font-family: var(--font-body); }
+.lx-res:hover { border-color: color-mix(in srgb, var(--mint) 40%, var(--hairline)); }
+.lx-res .lx-name { flex: 1; }
+.lx-res .lx-date { display: inline; margin: 0; }
+.lx-res .lx-amt { color: var(--text-dim); }
+
 /* ============================================================= *
  *  Tasks tab                                                    *
  * ============================================================= */

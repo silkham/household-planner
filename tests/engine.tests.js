@@ -46,6 +46,13 @@ approx(projectCostInMonth(projSpread, monthIndex("2026-01")), 800, "cost_spread 
 approx(projectCostInMonth(projSpread, monthIndex("2026-02")), 100, "cost_spread override 2");
 eq(projectCostInMonth(projSpread, monthIndex("2026-03")), 0, "cost_spread month absent → 0");
 eq(projectCostInMonth({ estimated_cost: 500, target_start_month: null }, monthIndex("2026-01")), 0, "null start → 0");
+// actuals already hit shrink the remaining plan (they're already in opening cash)
+const projAct = { ...proj, actual_cost: 300 };  // a third of £900 spent
+approx(projectCostInMonth(projAct, monthIndex("2026-01")), 200, "actual hit shrinks plan (300/mo → 200)");
+approx(projectCostInMonth(projAct, monthIndex("2026-03")), 200, "actual scaling applies every month");
+eq(projectCostInMonth({ ...proj, actual_cost: 900 }, monthIndex("2026-01")), 0, "fully spent → nothing left to forecast");
+eq(projectCostInMonth({ ...proj, actual_cost: 1200 }, monthIndex("2026-01")), 0, "overspent → clamps to 0, not negative");
+approx(projectCostInMonth({ ...projSpread, actual_cost: 450 }, monthIndex("2026-01")), 400, "actuals scale a cost_spread too (800×0.5)");
 
 // ---- effectiveAmount: uplift + salary_change -------------------------------
 const flow = { id: "f1", amount: 1000, start_month: "2026-01", annual_uplift_pct: 0.03, uplift_month: 4 };

@@ -37,13 +37,13 @@ export async function resolveHousehold() {
 const TABLES = [
   "accounts", "recurring_flows", "salary_changes", "bonuses",
   "financing_options", "life_events", "projects", "project_items",
-  "category_rules", "categories",
+  "project_item_txns", "category_rules", "categories",
 ];
 
 export const state = {
   accounts: [], recurring_flows: [], salary_changes: [], bonuses: [],
   financing_options: [], life_events: [], projects: [], project_items: [],
-  category_rules: [], categories: [], settings: null,
+  project_item_txns: [], category_rules: [], categories: [], settings: null,
 };
 
 const subs = new Set();
@@ -128,6 +128,19 @@ export async function saveCategoryRule(match_key, category) {
   await loadAll();
   return data && data[0];
 }
+
+// Link an Emma transaction to a project line item. Upsert on
+// (household_id, emma_txn_id) so re-linking a transaction MOVES it to the new
+// item rather than erroring on the unique index. `row` carries item_id,
+// emma_txn_id, merchant, txn_date, amount (all snapshotted).
+export async function linkProjectTxn(row) {
+  const hid = await resolveHousehold();
+  const { error } = await HP.from("project_item_txns")
+    .upsert({ ...row, household_id: hid }, { onConflict: "household_id,emma_txn_id" });
+  if (error) throw error;
+  await loadAll();
+}
+export async function unlinkProjectTxn(id) { await deleteRow("project_item_txns", id); }
 
 // settings is a singleton keyed on household_id (no `id`), so it needs its own
 // save path — upsert on the PK rather than the generic id-based saveRow.

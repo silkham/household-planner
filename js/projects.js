@@ -4,9 +4,11 @@
 //  carries line items (sum→total), the budget lock, actuals/variance and a
 //  per-month cost-spread override.
 // ============================================================================
-import { state, subscribe, saveRow, currentForecast } from "./store.js";
+import { state, subscribe, saveRow, currentForecast, linkProjectTxn, unlinkProjectTxn } from "./store.js";
 import { openSheet, fmtGBP, fmtMonth } from "./sheet.js";
 import { projectAffordability, monthIndex, fromIndex } from "./engine.js";
+import { fetchEmma, cachedEmmaTxns } from "./emma.js";
+import { txnKey } from "./categories.js";
 
 const opt = (arr) => arr.map((v) => ({ label: v, value: v }));
 const CATEGORIES = opt(["Structural", "Cosmetic", "Repair", "Garden", "Energy", "Furniture"]);
@@ -36,6 +38,12 @@ const itemsFor = (pid) =>
 const sumEst = (items) => items.reduce((s, i) => s + (Number(i.estimated_cost) || 0), 0);
 const sumAct = (items) => items.reduce((s, i) => s + (i.actual_cost == null ? 0 : Number(i.actual_cost)), 0);
 const hasActuals = (items) => items.some((i) => i.actual_cost != null);
+
+// ---- linked transactions (an item's actual_cost = sum of its links) --------
+const linksFor = (itemId) => state.project_item_txns.filter((l) => l.item_id === itemId);
+const sumLinks = (itemId) => linksFor(itemId).reduce((s, l) => s + (Number(l.amount) || 0), 0);
+// stable identity for an Emma txn: its feed ID, else a synthesized key
+const synthKey = (t) => t.id || `${t.date}|${t.amount}|${txnKey(t)}`;
 // the cashflow number: derived sum when line items exist, else the manual field
 const projectCost = (p) => {
   const its = itemsFor(p.id);
@@ -232,21 +240,121 @@ export function editItem(project, record, onDone) {
     ? { project_id: project.id, name: "", estimated_cost: 0, actual_cost: null,
         status: "todo", sort_order: nextOrder, notes: null }
     : record;
+  // When an item has linked transactions, its actual_cost is DERIVED from them
+  // (read-only, like a project's estimated_cost once it has line items). Only
+  // offer the manual field when there are no links.
+  const linked = isNew ? false : linksFor(rec.id).length > 0;
+
+  const fields = [
+    { key: "name", label: "Name", type: "text", placeholder: "Units & worktops" },
+    { key: "estimated_cost", label: "Budget £", type: "money", step: "100" },
+  ];
+  if (!linked)
+    fields.push({ key: "actual_cost", label: "Actual £ (blank = not spent)", type: "money", step: "50", emptyNull: true });
+  fields.push(
+    { key: "status", label: "Status", type: "segmented", options: ITEM_STATUS },
+    { key: "notes", label: "Notes", type: "textarea" },
+  );
+
   openSheet({
     title: isNew ? "New line item" : "Line item",
     table: "project_items",
-    fields: [
-      { key: "name", label: "Name", type: "text", placeholder: "Units & worktops" },
-      { key: "estimated_cost", label: "Budget £", type: "money", step: "100" },
-      { key: "actual_cost", label: "Actual £ (blank = not spent)", type: "money", step: "50", emptyNull: true },
-      { key: "status", label: "Status", type: "segmented", options: ITEM_STATUS },
-      { key: "notes", label: "Notes", type: "textarea" },
-    ],
+    fields,
     record: rec,
     // project_id + sort_order aren't shown but must persist
     derive: () => ({ project_id: project.id, sort_order: rec.sort_order }),
+    // link transactions on existing items (need an id to attach to)
+    extra: isNew ? null : (box) => renderLinks(box, project, rec),
     onDone: async () => { await syncTotals(project.id); onDone && onDone(); render(); },
   });
+}
+
+// ---- linked-transactions section (inside the line-item sheet) --------------
+// Search the Emma feed, tap to link one or more transactions. The item's
+// actual_cost is kept = SUM(links); syncTotals rolls that to the project so the
+// forecast shrinks the remaining project spend by what's already been paid.
+function renderLinks(box, project, item) {
+  let q = "";
+  let fetching = false;
+  const inputId = `lx-search-${item.id}`;
+
+  const recompute = async () => {
+    await saveRow("project_items", { id: item.id, actual_cost: sumLinks(item.id) });
+    await syncTotals(project.id);
+    render();          // refresh the Projects list behind the sheet
+  };
+
+  const draw = (focusSearch) => {
+    const links = linksFor(item.id);
+    const act = sumLinks(item.id);
+    const linkedKeys = new Set(state.project_item_txns.map((l) => l.emma_txn_id));
+
+    const linkedHtml = links.length
+      ? links.map((l) => `<div class="lx">
+          <div class="lx-main"><span class="lx-name">${l.merchant || "Transaction"}</span>
+            <span class="lx-date">${l.txn_date || ""}</span></div>
+          <span class="lx-amt">${fmtGBP(l.amount)}</span>
+          <button class="lx-del" data-unlink="${l.id}" title="Unlink"><i data-lucide="x"></i></button>
+        </div>`).join("")
+      : `<div class="sec-empty" style="margin:0">No linked transactions yet.</div>`;
+
+    const feed = cachedEmmaTxns();
+    let matches = [];
+    if (q.trim()) {
+      const ql = q.trim().toLowerCase();
+      matches = feed
+        .filter((t) => t.amount < 0 && !linkedKeys.has(synthKey(t)))
+        .filter((t) => `${t.customName || ""} ${t.merchant || ""} ${t.counterparty || ""}`.toLowerCase().includes(ql)
+                    || String(Math.abs(t.amount)).includes(ql))
+        .sort((a, b) => (b.dateInt || 0) - (a.dateInt || 0))
+        .slice(0, 12);
+    }
+    const resultsHtml = !q.trim() ? "" : (matches.length
+      ? matches.map((t, i) => `<button class="lx-res" data-add="${i}">
+          <span class="lx-name">${txnKey(t)}</span>
+          <span class="lx-date">${t.date}</span>
+          <span class="lx-amt">${fmtGBP(Math.abs(t.amount))}</span>
+        </button>`).join("")
+      : `<div class="sec-empty" style="margin:0">${feed.length ? "No matching transactions." : (fetching ? "Loading Emma…" : "Emma not loaded — type to search once it's ready.")}</div>`);
+
+    box.innerHTML = `
+      <div class="pi-head"><span class="eyebrow">Linked transactions</span>
+        <span class="pi-total">${links.length ? fmtGBP(act) + " actual" : "none"}</span></div>
+      <div class="lx-list">${linkedHtml}</div>
+      <input class="field lx-search" id="${inputId}" type="text" inputmode="search"
+        placeholder="Search Emma to link a payment…" value="${q.replace(/"/g, "&quot;")}">
+      <div class="lx-results">${resultsHtml}</div>`;
+
+    // wire
+    box.querySelectorAll("[data-unlink]").forEach((b) => b.onclick = async () => {
+      await unlinkProjectTxn(b.dataset.unlink);
+      await recompute();
+      draw(false);
+    });
+    box.querySelectorAll("[data-add]").forEach((b) => b.onclick = async () => {
+      const t = matches[+b.dataset.add];
+      if (!t) return;
+      await linkProjectTxn({
+        item_id: item.id, emma_txn_id: synthKey(t),
+        merchant: txnKey(t), txn_date: t.date, amount: Math.abs(Number(t.amount) || 0),
+      });
+      await recompute();
+      q = ""; draw(true);
+    });
+    const search = box.querySelector(`#${CSS.escape(inputId)}`);
+    if (search) {
+      search.oninput = () => { q = search.value; draw(true); };
+      if (focusSearch) { search.focus(); const v = search.value; search.value = ""; search.value = v; }
+    }
+    window.lucide && lucide.createIcons({ nameAttr: "data-lucide" });
+  };
+
+  draw(false);
+  // lazy-load the Emma feed so search works; redraw once it lands
+  if (!cachedEmmaTxns().length) {
+    fetching = true;
+    fetchEmma().catch(() => {}).finally(() => { fetching = false; draw(false); });
+  }
 }
 
 // ============================================================================

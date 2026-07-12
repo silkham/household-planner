@@ -5,5 +5,5 @@
 //  can confirm which deployed build the browser actually loaded.
 //    major.minor.patch — minor tracks a shipped phase, patch a fix/tweak.
 // ============================================================================
-export const APP_VERSION = "1.18.0";  // 1.18.0 = Forecast "This month" card gains an "Other income" group (genuine non-salary, non-refund inflows) to match the Spending panel — so the card's income total tracks actuals, not just known flows + bonuses
-export const BUILD_DATE  = "2026-07-09";
+export const APP_VERSION = "1.19.0";  // 1.19.0 = V1 close-out batch: (1) link project line items to real Emma transactions → item actual_cost = SUM(links) → forecast shrinks remaining project spend by what's hit; (2) one-tap best-guess category accept on the Spending "needs a category" prompt; (3) mobile viewport locked app-like (no pinch/double-tap zoom, no overscroll)
+export const BUILD_DATE  = "2026-07-12";

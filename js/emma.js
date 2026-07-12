@@ -58,6 +58,7 @@ export async function fetchEmma(force = false) {
   const get = (r, name) => (ix[name] != null && ix[name] < r.length ? r[ix[name]] : "");
 
   const txns = rows.slice(1).map((r) => ({
+    id: get(r, "ID"),
     date: get(r, "Date"),
     dateInt: usDateInt(get(r, "Date")),
     amount: parseFloat(String(get(r, "Amount") || "0").replace(/,/g, "")) || 0,
