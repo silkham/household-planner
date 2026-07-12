@@ -99,6 +99,23 @@ const catOf = (g, name) => g && g.categories.find((c) => c.name === name);
   ok(res.expense[res.expense.length - 1].name === "General Expenses", "General sits last");
 }
 
+// ---- 3b. project-linked transactions are carved out of General -------------
+{
+  const txns = [
+    { ...tx("Southern Sheds", -581, di(2026, 8, 5), "Shopping"), id: "SHED1" }, // linked → Projects
+    tx("Deliveroo", -40, di(2026, 8, 4), "Eating out"),                          // stays General
+  ];
+  const res = reconcileMonth({
+    month: MONTH, txns,
+    recurring_flows: [],
+    budgets: { "General Expenses": 400 },
+    projectKeys: new Set(["SHED1"]),
+  });
+  const g = gExp(res, "General Expenses");
+  eq(g.actual, 40, "project-linked txn excluded from General (only Deliveroo counts)");
+  ok(!catOf(g, "Shopping"), "the project merchant's category is gone from General");
+}
+
 // ---- 4. General over budget flags red --------------------------------------
 {
   const res = reconcileMonth({

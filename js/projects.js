@@ -8,7 +8,7 @@ import { state, subscribe, saveRow, currentForecast, linkProjectTxn, unlinkProje
 import { openSheet, fmtGBP, fmtMonth } from "./sheet.js";
 import { projectAffordability, monthIndex, fromIndex } from "./engine.js";
 import { fetchEmma, cachedEmmaTxns } from "./emma.js";
-import { txnKey } from "./categories.js";
+import { txnKey, synthKey } from "./categories.js";
 
 const opt = (arr) => arr.map((v) => ({ label: v, value: v }));
 const CATEGORIES = opt(["Structural", "Cosmetic", "Repair", "Garden", "Energy", "Furniture"]);
@@ -42,8 +42,23 @@ const hasActuals = (items) => items.some((i) => i.actual_cost != null);
 // ---- linked transactions (an item's actual_cost = sum of its links) --------
 const linksFor = (itemId) => state.project_item_txns.filter((l) => l.item_id === itemId);
 const sumLinks = (itemId) => linksFor(itemId).reduce((s, l) => s + (Number(l.amount) || 0), 0);
-// stable identity for an Emma txn: its feed ID, else a synthesized key
-const synthKey = (t) => t.id || `${t.date}|${t.amount}|${txnKey(t)}`;
+
+// Link a batch of Emma transactions to a line item, then re-derive its actual
+// cost and roll it up to the project. Exported so the Spending tab can push a
+// merchant's transactions onto a project from the categorise sheet (the
+// transaction-side entry point). Idempotent — re-linking a txn just moves it.
+export async function linkTransactionsToItem(itemId, txns) {
+  for (const t of txns) {
+    await linkProjectTxn({
+      item_id: itemId, emma_txn_id: synthKey(t),
+      merchant: txnKey(t), txn_date: t.date, amount: Math.abs(Number(t.amount) || 0),
+    });
+  }
+  await saveRow("project_items", { id: itemId, actual_cost: sumLinks(itemId) });
+  const it = state.project_items.find((i) => i.id === itemId);
+  if (it) await syncTotals(it.project_id);
+  render();
+}
 // the cashflow number: derived sum when line items exist, else the manual field
 const projectCost = (p) => {
   const its = itemsFor(p.id);

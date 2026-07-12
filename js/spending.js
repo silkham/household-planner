@@ -8,7 +8,8 @@
 import { state, subscribe, saveRow, saveCategoryRule } from "./store.js";
 import { fetchEmma } from "./emma.js";
 import { openSheet, fmtGBP, fmtMonth } from "./sheet.js";
-import { buildExcludedSet, categoryNames, categoryManagerHtml, wireCategoryManager, txnKey, effectiveCategory, guessCategory } from "./categories.js";
+import { buildExcludedSet, categoryNames, categoryManagerHtml, wireCategoryManager, txnKey, effectiveCategory, guessCategory, synthKey } from "./categories.js";
+import { linkTransactionsToItem } from "./projects.js";
 
 const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const shortMonth = (ym) => {
@@ -152,7 +153,27 @@ function buildMonthActuals(month, monthTxns, rules, excluded) {
   const paidMerchants = new Set();
   for (const t of (txns || [])) if (t.amount < 0) paidMerchants.add(txKey(t));
 
-  const salary = new Map(), other = new Map(), expense = new Map(), invest = new Map(), noncount = new Map();
+  // Project-linked transactions → their own Projects section (carved out of
+  // General, like recurring bills). Keyed by the link's stable synthKey.
+  const linkInfo = new Map();   // synthKey → { project }
+  for (const l of state.project_item_txns) {
+    const it = state.project_items.find((i) => i.id === l.item_id);
+    const p = it && state.projects.find((pr) => pr.id === it.project_id);
+    linkInfo.set(l.emma_txn_id, { project: p ? p.name : "Project" });
+  }
+  const projectOf = (t) => linkInfo.get(synthKey(t)) || null;
+
+  const salary = new Map(), other = new Map(), expense = new Map(),
+        invest = new Map(), noncount = new Map(), projects = new Map();
+  const addProject = (pname, t) => {
+    let g = projects.get(pname);
+    if (!g) { g = { name: pname, amount: 0, merchants: new Map() }; projects.set(pname, g); }
+    const amt = Math.abs(t.amount); g.amount += amt;
+    const mk = txKey(t);
+    let m = g.merchants.get(mk);
+    if (!m) { m = { key: mk, cat: effCategory(t, rules), amount: 0, txns: [] }; g.merchants.set(mk, m); }
+    m.amount += amt; m.txns.push(t);
+  };
   // simple {name, amount, txns} bucket (salary / invest / not-counted)
   const simple = (map, key, amt, t) => {
     let g = map.get(key);
@@ -173,6 +194,7 @@ function buildMonthActuals(month, monthTxns, rules, excluded) {
 
   for (const t of monthTxns) {
     if (!t.amount) continue;
+    if (t.amount < 0) { const pj = projectOf(t); if (pj) { addProject(pj.project, t); continue; } }
     const cat = effCategory(t, rules);
     if (investCats.has(cat)) { simple(invest, cat, -t.amount, t); continue; }  // gone
     if (excluded.has(cat)) { simple(noncount, cat, Math.abs(t.amount), t); continue; }
@@ -221,11 +243,20 @@ function buildMonthActuals(month, monthTxns, rules, excluded) {
   const incomeArr = otherGroup ? [...salaryArr, otherGroup] : salaryArr;
   const investArr = finSimple(invest);
   const nonArr = finSimple(noncount);
+  const projectArr = [...projects.values()].sort(byAmt).map((g) => {
+    const merchants = [...g.merchants.values()];
+    merchants.forEach((m) => m.txns.sort(byDate));
+    merchants.sort(byAmt);
+    g.merchantArr = merchants;
+    return g;
+  });
   const totIn = incomeArr.reduce((s, g) => s + g.amount, 0);
   const totOut = expenseArr.reduce((s, g) => s + g.amount, 0);
   const totInvest = investArr.reduce((s, g) => s + g.amount, 0);
-  return { incomeArr, expenseArr, investArr, nonArr, totIn, totOut, totInvest,
-           net: totIn - totOut - totInvest };
+  const totProject = projectArr.reduce((s, g) => s + g.amount, 0);
+  return { incomeArr, expenseArr, projectArr, investArr, nonArr,
+           totIn, totOut, totInvest, totProject,
+           net: totIn - totOut - totProject - totInvest };
 }
 
 const txList = (txns, cat) => `<div class="bd-lines">${txns.map((t) =>
@@ -261,7 +292,7 @@ const incomeSourceList = (arr) => `<div class="bd-lines">${arr.map(incomeSourceR
 // One expandable category group. Out groups expand to per-merchant sums (General
 // via its sub-categories first); income/invest/not-counted expand to txns.
 function catGroup(g, kind) {
-  const prefix = { income: "i", out: "e", invest: "v", noncount: "n" }[kind];
+  const prefix = { income: "i", out: "e", project: "p", invest: "v", noncount: "n" }[kind];
   const key = `${prefix}:${g.name}`;
   const open = openCats.has(key);
   const general = kind === "out" && g.name === GENERAL;
@@ -269,10 +300,12 @@ function catGroup(g, kind) {
   const badge = general && budget != null
     ? `<span class="sp-budget ${g.amount > budget + 0.005 ? "over" : ""}">/ ${fmtGBP(budget)} budget</span>` : "";
   const tag = kind === "invest" ? ` <span class="sp-catoff invest">invested</span>`
+    : kind === "project" ? ` <span class="sp-catoff project">project</span>`
     : kind === "noncount" ? ` <span class="sp-catoff">not counted</span>` : "";
   const sign = kind === "income" ? "+" : "−";
   const amtStyle = kind === "income" ? ' style="color:var(--mint)"'
-    : kind === "invest" ? ' style="color:var(--violet)"' : "";
+    : kind === "invest" ? ' style="color:var(--violet)"'
+    : kind === "project" ? ' style="color:var(--amber)"' : "";
 
   let body = "";
   if (open) {
@@ -286,13 +319,13 @@ function catGroup(g, kind) {
             <span class="bd-catamt">${s.amount < 0 ? "+" : "−"}${fmtGBP(Math.abs(s.amount))}</span>
           </button>${sopen ? merchantList(s.merchants) : ""}</div>`;
       }).join("");
-    } else if (kind === "out") {
+    } else if (kind === "out" || kind === "project") {
       body = merchantList(g.merchantArr);
     } else if (g.sources) {
       body = incomeSourceList(g.sources);   // "Other income" → per-source lines
     } else body = txList(g.txns, g.name);
   }
-  return `<div class="bd-cat ${open ? "open" : ""} ${kind === "noncount" ? "notcount" : ""} ${kind === "invest" ? "invest" : ""}">
+  return `<div class="bd-cat ${open ? "open" : ""} ${kind === "noncount" ? "notcount" : ""} ${kind === "invest" ? "invest" : ""} ${kind === "project" ? "project" : ""}">
     <button class="bd-cathead" data-gkey="${enc(key)}">
       <i data-lucide="chevron-${open ? "down" : "right"}" class="bd-chev"></i>
       <span class="bd-catname">${g.name}${tag}${badge}</span>
@@ -309,6 +342,7 @@ function monthPanelHtml(month, d) {
   <div class="mr-nums">
     <span>Income <b style="color:var(--mint)">+${fmtGBP(d.totIn)}</b></span>
     <span>Spent <b style="color:var(--coral)">−${fmtGBP(d.totOut)}</b></span>
+    ${d.totProject > 0.5 ? `<span>Projects <b style="color:var(--amber)">−${fmtGBP(d.totProject)}</b></span>` : ""}
     ${d.totInvest > 0.5 ? `<span>Invested <b style="color:var(--violet)">−${fmtGBP(d.totInvest)}</b></span>` : ""}
   </div>`;
   const section = (title, arr, kind) => arr.length
@@ -316,6 +350,7 @@ function monthPanelHtml(month, d) {
   return `<div class="sp-month glass">${pos}
     ${section("Income", d.incomeArr, "income")}
     ${section("Out", d.expenseArr, "out")}
+    ${section("Projects", d.projectArr, "project")}
     ${section("Savings & investments · treated as spent", d.investArr, "invest")}
     ${section("Not counted", d.nonArr, "noncount")}
   </div>`;
@@ -396,8 +431,63 @@ function categorise(key, currentCat) {
       // plain insert would hit idx_hp_catrules_key. Upsert is collision-proof.
       await saveCategoryRule(key, cat);
     },
+    // transaction-side project linking: attach this merchant's payments to a
+    // project line item (they then read as Projects, not General/discretionary).
+    extra: (box) => renderProjectLink(box, key),
     onDone: render,
   });
+}
+
+// Project ▸ line-item options (only projects that have line items — the link
+// target is a line item, whose actual_cost the payments feed).
+function projectItemGroups() {
+  return state.projects.map((p) => ({
+    name: p.name,
+    items: state.project_items.filter((i) => i.project_id === p.id)
+      .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+      .map((i) => ({ id: i.id, name: i.name })),
+  })).filter((g) => g.items.length);
+}
+
+// "Add to project" section inside the categorise sheet — links every outflow
+// from this merchant currently in the feed to the chosen line item.
+function renderProjectLink(box, key) {
+  const groups = projectItemGroups();
+  const matching = (txns || []).filter((t) => t.amount < 0 &&
+    (t.customName === key || t.merchant === key || t.counterparty === key));
+
+  const draw = () => {
+    if (!groups.length) {
+      box.innerHTML = `<div class="pi-head"><span class="eyebrow">Add to project</span></div>
+        <div class="sec-empty" style="margin:0">Add a line item to a project first, then link payments to it here.</div>`;
+      return;
+    }
+    const linked = new Set(state.project_item_txns.map((l) => l.emma_txn_id));
+    const unlinked = matching.filter((t) => !linked.has(synthKey(t)));
+    const already = matching.length - unlinked.length;
+    const total = unlinked.reduce((s, t) => s + Math.abs(t.amount), 0);
+    const opts = groups.map((g) =>
+      `<optgroup label="${g.name}">${g.items.map((i) => `<option value="${i.id}">${i.name}</option>`).join("")}</optgroup>`).join("");
+    box.innerHTML = `
+      <div class="pi-head"><span class="eyebrow">Add to project</span>
+        <span class="pi-total">${matching.length} payment${matching.length === 1 ? "" : "s"}</span></div>
+      <select class="field lx-proj">${opts}</select>
+      <button class="pi-add" data-linkproj ${unlinked.length ? "" : "disabled"}>
+        <i data-lucide="link"></i> ${unlinked.length
+          ? `Link ${unlinked.length} payment${unlinked.length === 1 ? "" : "s"} · ${fmtGBP(total)}`
+          : "All payments linked"}</button>
+      ${already ? `<div class="fld-help">${already} already linked to a project.</div>` : ""}`;
+    const btn = box.querySelector("[data-linkproj]");
+    if (btn && unlinked.length) btn.onclick = async () => {
+      const itemId = box.querySelector(".lx-proj").value;
+      if (!itemId) return;
+      btn.disabled = true;
+      await linkTransactionsToItem(itemId, unlinked);
+      draw();          // now all linked
+    };
+    window.lucide && lucide.createIcons({ nameAttr: "data-lucide" });
+  };
+  draw();
 }
 
 // ---- transaction search ----------------------------------------------------

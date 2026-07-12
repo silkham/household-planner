@@ -19,6 +19,11 @@ export const DEFAULT_EXCLUDED = ["Excluded", "Transfers"];
 // Display/rule key for a transaction: Emma's cleaned merchant name preferred.
 export const txnKey = (t) => t.customName || t.merchant || t.counterparty || "Unknown";
 
+// Stable identity for an Emma transaction (used to link txns to project line
+// items): the feed's own row ID, else a synthesized key. Shared so the project
+// side and the transaction side agree on what's already linked.
+export const synthKey = (t) => t.id || `${t.date}|${t.amount}|${txnKey(t)}`;
+
 // A category_rules override for a transaction. Emma's Custom Name varies month
 // to month for some merchants (Amazon, refunds…), so we match a rule against
 // ANY of the transaction's identity fields — that's what makes a single re-tag

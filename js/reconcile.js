@@ -69,6 +69,8 @@ const round2 = (n) => Math.round(n * 100) / 100;
 //   category_rules  state.category_rules (match_key → category) override
 //   budgets         settings.forecast_budgets — { "General Expenses": 2500 }
 //   excluded        Set of non-counting category names (from buildExcludedSet)
+//   projectKeys     Set of synthKeys for transactions linked to project line
+//                   items — carved out of General (they're Projects spend)
 // Returns { income: [group], expense: [group] } — General is appended last on
 // the expense side. Flow groups carry `lines`; the budget group carries `categories`.
 export function reconcileMonth(opts = {}) {
@@ -220,7 +222,12 @@ export function reconcileMonth(opts = {}) {
   }
 
   // ---- General Expenses: counting outflows NOT tied to a known bill --------
-  const genTxns = monthTxns.filter((t) => t.amount < 0 && !txIsKnown(t));
+  // Project-linked transactions are budgeted under Projects, not discretionary
+  // General — carve them out here (keys passed in; synthKey mirrors
+  // categories.js, kept import-free for the test runner).
+  const projectKeys = opts.projectKeys instanceof Set ? opts.projectKeys : new Set();
+  const synthK = (t) => t.id || `${t.date}|${t.amount}|${txKey(t)}`;
+  const genTxns = monthTxns.filter((t) => t.amount < 0 && !txIsKnown(t) && !projectKeys.has(synthK(t)));
   const catMap = new Map();
   for (const t of genTxns) {
     const c = effCat(t);

@@ -5,5 +5,5 @@
 //  can confirm which deployed build the browser actually loaded.
 //    major.minor.patch — minor tracks a shipped phase, patch a fix/tweak.
 // ============================================================================
-export const APP_VERSION = "1.19.0";  // 1.19.0 = V1 close-out batch: (1) link project line items to real Emma transactions → item actual_cost = SUM(links) → forecast shrinks remaining project spend by what's hit; (2) one-tap best-guess category accept on the Spending "needs a category" prompt; (3) mobile viewport locked app-like (no pinch/double-tap zoom, no overscroll)
+export const APP_VERSION = "1.20.0";  // 1.20.0 = project linking flows through the app: (A) link a merchant's payments to a project line item straight from the Spending categorise sheet; (B) Forecast "This month" carves project-linked txns out of General (budgeted under Projects); (C) Spending month panel gains a Projects section mirroring Forecast
 export const BUILD_DATE  = "2026-07-12";

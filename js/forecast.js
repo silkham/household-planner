@@ -377,6 +377,7 @@ function buildReconcile(fc) {
       category_rules: state.category_rules,
       budgets: (state.settings && state.settings.forecast_budgets) || {},
       excluded: buildExcludedSet(state.categories),
+      projectKeys: new Set(state.project_item_txns.map((l) => l.emma_txn_id)),
     });
     const groups = [...r.income, ...r.expense];
     const projHtml = projectGroup(fc);
