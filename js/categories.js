@@ -44,6 +44,61 @@ export function passThroughCategory(c) {
 export const effectiveCategory = (t, rules) =>
   ruleCategory(t, rules) || passThroughCategory(t.category) || "Uncategorised";
 
+// ---- best-guess category for an unmapped merchant --------------------------
+// Under strict categorisation a NEW merchant lands in "Uncategorised" and the
+// household files it by hand. This offers a one-tap suggestion: keyword-match
+// the merchant name first (most reliable), then fall back to Emma's own raw
+// category. The guess is SNAPPED to an existing category name where possible so
+// accepting it respects the household's taxonomy rather than minting near-dupes.
+const MERCHANT_GUESS = [
+  [/tesco|sainsbury|aldi|\blidl\b|asda|morrison|waitrose|co-?op|iceland|ocado|m&s ?food|marks ?and ?spencer ?food/, "Groceries"],
+  [/costa|greggs|mcdonald|\bkfc\b|nando|pret|starbucks|deliveroo|just ?eat|uber ?eats|domino|pizza|burger|\bcafe\b|coffee|restaurant|wagamama|subway/, "Eating Out"],
+  [/\bshell\b|\bbp\b|\besso\b|texaco|petrol|\bfuel\b|trainline|\btfl\b|\brail\b|\bparking\b|\buber\b|\bbolt\b|\bgwr\b|northern|stagecoach|\bncp\b/, "Transport"],
+  [/amazon|argos|\bebay\b|ikea|currys|john ?lewis|\bnext\b|\basos\b|\bzara\b|primark|dunelm|\bh&m\b|very\.co/, "Shopping"],
+  [/screwfix|\bb&q\b|wickes|toolstation|homebase|travis ?perkins|\bshed\b|jewson|selco|plumb/, "House"],
+  [/\bboots\b|pharmac|specsavers|dentist|\bnhs\b|optician|vitamin|holland ?and ?barrett|superdrug/, "Health"],
+  [/netflix|spotify|disney|youtube|prime ?video|apple\.com|\bicloud\b|audible|patreon|\bhbo\b|\bnow ?tv\b/, "Subscriptions - Media"],
+  [/british ?gas|octopus|\beon\b|\bedf\b|scottish ?power|thames ?water|severn ?trent|council ?tax|tv ?licen|virgin ?media|\bbt\b|\bsky\b|vodafone|\bo2\b|\bee\b|\bthree\b|water|energy/, "Bills"],
+];
+const EMMA_CAT_GUESS = [
+  [/holiday|vacation/, "Holiday"],
+  [/grocer|supermarket/, "Groceries"],
+  [/eating ?out|restaurant|dining|takeaway|food ?& ?drink/, "Eating Out"],
+  [/transport|transit|\bfuel\b|petrol|travel/, "Transport"],
+  [/shopping|retail|clothing/, "Shopping"],
+  [/entertainment|leisure/, "Entertainment"],
+  [/health|medical|pharmac|personal ?care|fitness/, "Health"],
+  [/hous|rent|mortgage|\bhome\b|diy/, "House"],
+  [/bill|utilit/, "Bills"],
+];
+
+// Snap a generic guess to an existing category name: exact (case-insensitive)
+// first, else the shortest known name that contains — or is contained by — the
+// guess (so "Bills" → "Recurring - Bills" when that's the real bucket).
+function snapToKnown(guess, known = []) {
+  const g = guess.toLowerCase();
+  const exact = known.find((n) => n.toLowerCase() === g);
+  if (exact) return exact;
+  const contains = known
+    .filter((n) => { const l = n.toLowerCase(); return l.includes(g) || g.includes(l); })
+    .sort((a, b) => a.length - b.length);
+  return contains[0] || null;
+}
+
+export function guessCategory(t, known = []) {
+  // Don't guess for internal-money txns — those already pass through.
+  if (passThroughCategory(t.category)) return null;
+  const hay = `${t.customName || ""} ${t.merchant || ""} ${t.counterparty || ""}`.toLowerCase();
+  let guess = null;
+  for (const [re, cat] of MERCHANT_GUESS) if (re.test(hay)) { guess = cat; break; }
+  if (!guess) {
+    const rc = (t.category || "").toLowerCase();
+    for (const [re, cat] of EMMA_CAT_GUESS) if (re.test(rc)) { guess = cat; break; }
+  }
+  if (!guess) return null;
+  return snapToKnown(guess, known) || guess;
+}
+
 // Set of category names that DON'T count toward spend.
 export function buildExcludedSet(categories = []) {
   const set = new Set(DEFAULT_EXCLUDED);

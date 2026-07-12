@@ -8,7 +8,7 @@
 import { state, subscribe, saveRow, saveCategoryRule } from "./store.js";
 import { fetchEmma } from "./emma.js";
 import { openSheet, fmtGBP, fmtMonth } from "./sheet.js";
-import { buildExcludedSet, categoryNames, categoryManagerHtml, wireCategoryManager, txnKey, effectiveCategory } from "./categories.js";
+import { buildExcludedSet, categoryNames, categoryManagerHtml, wireCategoryManager, txnKey, effectiveCategory, guessCategory } from "./categories.js";
 
 const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const shortMonth = (ym) => {
@@ -330,19 +330,27 @@ function uncategorisedHtml(spend, rules) {
   for (const t of spend) {
     if (effCategory(t, rules) !== "Uncategorised") continue;
     const k = txnKey(t);
-    const a = agg.get(k) || { key: k, count: 0, total: 0 };
+    const a = agg.get(k) || { key: k, count: 0, total: 0, sample: t };
     a.count += 1; a.total += -t.amount; agg.set(k, a);
   }
   if (!agg.size) return "";
   const list = [...agg.values()].sort((a, b) => b.total - a.total);
   const total = list.reduce((s, x) => s + x.total, 0);
   const shown = list.slice(0, 25);
-  const rows = shown.map((x) => `
-    <button class="sp-uncat-row" data-uncat="${encodeURIComponent(x.key)}">
-      <span class="sp-uncat-name">${x.key}</span>
-      <span class="sp-uncat-meta">${x.count}× · ${fmtGBP(x.total)}</span>
-      <i data-lucide="chevron-right"></i>
-    </button>`).join("");
+  const known = categoryNames(state.categories, spend, rules);
+  const rows = shown.map((x) => {
+    const guess = guessCategory(x.sample, known);
+    const accept = guess
+      ? `<button class="sp-uncat-accept" data-accept-key="${encodeURIComponent(x.key)}" data-accept-cat="${encodeURIComponent(guess)}" title="File as ${guess}">
+           <i data-lucide="check"></i><span>${guess}</span></button>`
+      : "";
+    return `<div class="sp-uncat-row">
+      <button class="sp-uncat-open" data-uncat="${encodeURIComponent(x.key)}">
+        <span class="sp-uncat-name">${x.key}</span>
+        <span class="sp-uncat-meta">${x.count}× · ${fmtGBP(x.total)}</span>
+        <i data-lucide="chevron-right"></i>
+      </button>${accept}</div>`;
+  }).join("");
   const more = list.length > shown.length
     ? `<div class="sp-uncat-more">+${list.length - shown.length} more — biggest shown first</div>` : "";
   return `<div class="sp-uncat glass">
@@ -527,6 +535,13 @@ function render() {
   });
   root.querySelectorAll("[data-uncat]").forEach((b) => b.onclick = () =>
     categorise(decodeURIComponent(b.dataset.uncat), "Uncategorised"));
+  // One-tap accept of the best-guess category — writes the rule immediately.
+  root.querySelectorAll("[data-accept-key]").forEach((b) => b.onclick = async () => {
+    b.disabled = true;
+    await saveCategoryRule(decodeURIComponent(b.dataset.acceptKey),
+                           decodeURIComponent(b.dataset.acceptCat));
+    render();
+  });
 
   window.lucide && lucide.createIcons({ nameAttr: "data-lucide" });
 }
