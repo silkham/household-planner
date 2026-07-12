@@ -5,5 +5,5 @@
 //  can confirm which deployed build the browser actually loaded.
 //    major.minor.patch — minor tracks a shipped phase, patch a fix/tweak.
 // ============================================================================
-export const APP_VERSION = "1.17.0";  // 1.17.0 = Spending month: non-salary inflows collapse into one "Other income" dropdown; General sub-categories indented + de-emphasised so child rows read below their parent, not as siblings of the recurring lines
+export const APP_VERSION = "1.18.0";  // 1.18.0 = Forecast "This month" card gains an "Other income" group (genuine non-salary, non-refund inflows) to match the Spending panel — so the card's income total tracks actuals, not just known flows + bonuses
 export const BUILD_DATE  = "2026-07-09";

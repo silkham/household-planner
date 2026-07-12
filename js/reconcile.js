@@ -186,6 +186,39 @@ export function reconcileMonth(opts = {}) {
     income.sort((a, b) => b.expected - a.expected);
   }
 
+  // ---- Other income: genuine non-salary inflows (family transfers, ad-hoc
+  // credits) that aren't a known income flow and aren't a refund. Mirrors the
+  // Spending "Other income" group so the card's income total tracks actuals.
+  // A refund = an inflow from a merchant we EVER pay (paidMerchants) — it nets
+  // against spend elsewhere, so it's not income.
+  const incomeKeys = new Set(
+    activeFlows.filter((f) => f.kind === "income" && f.emma_match_key)
+      .map((f) => f.emma_match_key));
+  const isKnownIncome = (t) =>
+    incomeKeys.has(t.customName) || incomeKeys.has(t.merchant) || incomeKeys.has(t.counterparty);
+  const paidMerchants = new Set();
+  for (const t of txns) if (t.amount < 0) paidMerchants.add(txKey(t));
+  const otherMap = new Map();
+  for (const t of monthTxns) {
+    if (t.amount <= 0) continue;
+    if (isKnownIncome(t)) continue;            // already a salary/income line
+    if (paidMerchants.has(txKey(t))) continue; // refund → nets spend, not income
+    const k = txKey(t);
+    let g = otherMap.get(k);
+    if (!g) { g = { id: "oi:" + k, name: k, expected: 0, actual: 0, received: true, noEdit: true, txns: [] }; otherMap.set(k, g); }
+    g.actual = round2(g.actual + t.amount);
+    g.txns.push(t);
+  }
+  if (otherMap.size) {
+    const lines = [...otherMap.values()];
+    lines.forEach((l) => { l.expected = l.actual; l.txns.sort((a, b) => (b.dateInt || 0) - (a.dateInt || 0)); });
+    lines.sort((a, b) => b.actual - a.actual);
+    const total = round2(lines.reduce((s, l) => s + l.actual, 0));
+    income.push({ name: "Other income", kind: "income", type: "flows",
+      expected: total, actual: total, pendingExpected: 0, over: false, lines });
+    income.sort((a, b) => b.expected - a.expected);
+  }
+
   // ---- General Expenses: counting outflows NOT tied to a known bill --------
   const genTxns = monthTxns.filter((t) => t.amount < 0 && !txIsKnown(t));
   const catMap = new Map();

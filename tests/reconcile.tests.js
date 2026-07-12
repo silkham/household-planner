@@ -240,6 +240,35 @@ const catOf = (g, name) => g && g.categories.find((c) => c.name === name);
   eq(gExp(res, "House").expected, Math.round(60 * 52 / 12 * 100) / 100, "weekly expected accrues to monthly");
 }
 
+// ---- Other income: genuine non-salary inflows collapse into one group ------
+{
+  const txns = [
+    tx("MACFARLANES LLP, .", 6347, di(2026, 8, 28), "Salary"),   // known salary flow
+    tx("Grandma", 200, di(2026, 8, 10), "Uncategorised"),         // family transfer (never paid)
+    tx("Grandma", 100, di(2026, 8, 20), "Uncategorised"),         // same source → one line
+    tx("MANGOPAY", 117, di(2026, 8, 15), "Uncategorised"),        // ad-hoc credit
+    tx("Vionic", 112, di(2026, 8, 12), "Shopping"),               // REFUND (we pay Vionic) → not income
+    tx("Vionic", -246, di(2026, 8, 5), "Shopping"),               // the Vionic spend
+  ];
+  const res = reconcileMonth({
+    month: MONTH, txns,
+    recurring_flows: [
+      { id: "s", name: "Lachlan Salary", kind: "income", amount: 6347, category: "Salary", emma_match_key: "MACFARLANES LLP, ." },
+    ],
+  });
+  const oi = gInc(res, "Other income");
+  ok(!!oi, "Other income group built");
+  if (oi) {
+    eq(oi.actual, 417, "Other income = 200+100+117 (refund excluded)");
+    eq(oi.lines.length, 2, "one line per source (Grandma merged)");
+    eq(lineOf(oi, "Grandma").actual, 300, "Grandma's two transfers net into one line");
+    eq(lineOf(oi, "Grandma").received, true, "other income reads as received");
+    eq(lineOf(oi, "Grandma").noEdit, true, "no edit pencil (not a recurring flow)");
+    ok(!lineOf(oi, "Vionic"), "refund is NOT other income");
+  }
+  eq(gInc(res, "Income").actual, 6347, "salary stream unaffected");
+}
+
 // ---- summary ---------------------------------------------------------------
 log(`\nreconcile: ${PASS} passed, ${FAIL} failed`);
 if (FAIL > 0) { if (typeof process !== "undefined") process.exit(1); throw new Error(`${FAIL} failing`); }

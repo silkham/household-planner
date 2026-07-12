@@ -290,7 +290,7 @@ function flowLine(g, line) {
       <button class="rc-chead" data-rc="${encodeURIComponent(path)}">
         ${chev}<span class="rc-cname">${line.name}</span>${tag}<span class="rc-nums">${nums}</span>
       </button>
-      ${line.isBonus ? "" : `<button class="rc-edit" data-flow="${line.id}" title="Edit recurring flow"><i data-lucide="pencil"></i></button>`}
+      ${line.isBonus || line.noEdit ? "" : `<button class="rc-edit" data-flow="${line.id}" title="Edit recurring flow"><i data-lucide="pencil"></i></button>`}
     </div>${txns}</div>`;
 }
 
