@@ -2,7 +2,7 @@
 <html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <meta name="theme-color" content="#0A0D11" />
 <title>Household Planner</title>
 <link rel="manifest" href="manifest.webmanifest" />
@@ -85,6 +85,7 @@ html[data-theme="light"] {
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { height: 100%; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body {
   margin: 0;
   font-family: var(--font-body);
@@ -92,6 +93,10 @@ body {
   color: var(--text);
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
+  /* App-like feel: no double-tap zoom, no rubber-band scroll past the edges. */
+  touch-action: manipulation;
+  overscroll-behavior: none;
+  max-width: 100%;
 }
 h1,h2,h3,.font-head { font-family: var(--font-head); font-weight: 500; letter-spacing: -.01em; }
 
