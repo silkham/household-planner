@@ -12,7 +12,10 @@
 - **Home dashboard** — new app landing; a cross-cutting glance across forecast,
   spending, and projects that links into each. Shifts the landing from Forecast
   to Home. Home does NOT replace Forecast (which stays the deep money view) —
-  it's the front door with glanceable summary cards.
+  it's the front door with glanceable summary cards. **Forecast, Spending, and
+  Projects are three EQUAL pillars** — same card size + treatment, no one
+  louder than the others (don't over-weight Projects just because it's the
+  current build focus). Design approved via the V2 mockup (Session 16).
 - **Projects rework** — the big one. Projects become **pages, not pop-ups**:
   - Clicking a project opens its own **detail dashboard** (a destination worth
     living in), not a bottom-sheet. Spend vs budget, affordability, a schedule
@@ -53,12 +56,15 @@ Group names `Plan / Spend / Set up` are placeholders.
 - **Desktop — persistent left sidebar** with the 3 group headers + Home at top.
   Always shows the full map + where you are. (Desktop nav largely works today;
   this is a regroup, not a rebuild.)
-- **Mobile — bottom nav (4) + "More".**
-  - Bottom bar: **Home · Forecast · Projects · More**.
+- **Mobile — bottom nav (5) + "More".**
+  - Bottom bar: **Home · Forecast · Spending · Projects · More**. The three
+    equal pillars (Forecast, Spending, Projects) each get a permanent slot;
+    Home is the landing.
   - **"More" opens a drawer that IS the grouped menu** — same `Plan / Spend /
-    Set up` list as the desktop sidebar (Spending, Reports, Merchants,
-    Finances, Settings live here). Not a pure top-left burger: keeps core
-    one-tap + thumb-reachable, houses the full grouped map behind More.
+    Set up` list as the desktop sidebar. The drawer lists the FULL map (incl.
+    Forecast/Spending/Projects so it's complete) plus Reports, Merchants,
+    Finances, Settings. Not a pure top-left burger: keeps core one-tap +
+    thumb-reachable, houses the full grouped map behind More.
 - **Project detail = a route, not a sheet.** Introduces the app's first
   lightweight **client-side routing** primitive (click in → project view →
   back). Build it properly once; Merchants/Reports drill-downs reuse it.
@@ -81,6 +87,19 @@ line items + actuals, linked Emma payments already exist). New pieces marked ★
 - **Line items list**: each row budget/actual/status → tap opens the quick
   edit sheet.
 - **Recent payments**: linked Emma transactions hitting this project.
+
+## Home dashboard — contents (approved mockup, Session 16)
+
+Three EQUAL pillar cards (same glass card, same size/treatment, each with a
+headline number, a supporting line, and a tap-to-open chevron → its area):
+
+- **Forecast** — cash available now + sparkline + next-dip/below-buffer warning.
+- **Spending** — this month spent vs budget (progress bar) + a supporting line
+  (£ left, biggest category).
+- **Projects** — committed vs spent (progress bar) + next project spend.
+
+Greeting header above. No standalone alert strip that would tip weight to
+Forecast — the dip warning lives inside the Forecast card.
 
 ## Data model change
 
@@ -106,10 +125,13 @@ line items + actuals, linked Emma payments already exist). New pieces marked ★
 ## Resolved decisions
 
 - IA grouping: `Home + Plan / Spend / Set up` ✓
-- Mobile pattern: bottom nav (4) + "More" grouped drawer ✓
-- Home dashboard: in, as the landing ✓
+- Mobile pattern: bottom nav (5) `Home · Forecast · Spending · Projects · More`
+  + grouped drawer ✓
+- Home dashboard: in, as the landing; three EQUAL pillars ✓
 - Projects: detail pages + tab-as-dashboard ✓
 - Line items get dates (for the timeline) ✓
+- Visual design approved via the Session 16 mockup (Home, Projects dashboard,
+  Project detail, More drawer) in the app's real dark/aurora skin ✓
 
 ## Reference
 
