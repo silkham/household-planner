@@ -125,9 +125,13 @@ Forecast — the dip warning lives inside the Forecast card.
    bar, cards with spend progress). Tasks folded in as a "Projects | Tasks"
    sub-view toggle (removed from nav). Migration `20260713120000_project_items_
    due_month.sql` applied live.
-3. **Merchants page** — reuses the Emma feed + existing txn/category logic.
-4. **Reports / Budgeting page** — category trends over months + cost-to-kill
-   surfacing. Keep aggregations pure + testable.
+3. ~~**Merchants page**~~ — **SHIPPED v1.23.0** (Session 18). Reuses the Emma
+   feed + existing txn/category logic.
+4. ~~**Reports / Budgeting page**~~ — **SHIPPED v1.24.0** (Session 19). Category
+   trends over a rolling window (MoM change + sparkline + monthly-total chart,
+   sortable Biggest/Movers, tap → ranked merchants → re-file) + a "Cost to kill"
+   list of annualised recurring commitments. Pure `reportCategories` +
+   `annualCost` cores + tests/reports.tests.js (32; 226 total green).
 5. **What-if slider** — Forecast/Projects UI over the already-pure engine.
 6. **Add-people function** — small, in Settings.
 

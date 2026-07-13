@@ -726,6 +726,32 @@ main { flex: 1; padding: 20px 18px 108px; }
 .mc-tx-amt.in { color: var(--mint); }
 .mc-tx i { width: 14px; height: 14px; color: var(--text-faint); }
 
+/* ---- reports / budgeting (V2 step 4) ---- */
+.rp-catrow, .rp-mrow { grid-template-columns: minmax(0,1.3fr) 64px auto auto auto; }
+.rp-avg { text-align: right; font-size: 11px; color: var(--text-faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rp-chart { display: flex; align-items: flex-end; gap: 6px; height: 110px; padding: 12px 14px 8px; margin-bottom: 14px; }
+.rp-bar { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+  height: 100%; gap: 4px; }
+.rp-bar-fill { width: 62%; max-width: 26px; border-radius: 4px 4px 0 0;
+  background: linear-gradient(to top, color-mix(in srgb, var(--violet) 45%, transparent), var(--violet)); }
+.rp-bar-lbl { font-size: 9.5px; color: var(--text-faint); }
+.rp-sec { margin-top: 22px; }
+.rp-sec-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+.rp-sec-head h2 { font-family: var(--font-head); font-weight: 500; font-size: 17px; margin: 0; }
+.rp-sec-sub { font-size: 12px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.rp-kill-note { font-size: 12px; margin: 0 0 10px; }
+.rp-kill { display: flex; flex-direction: column; border: 1px solid var(--hairline); border-radius: var(--r-card);
+  background: var(--card); overflow: hidden; }
+.rp-kill-row { display: grid; grid-template-columns: minmax(0,1.2fr) auto auto auto; align-items: center; gap: 10px;
+  padding: 10px 14px; border-top: 1px solid var(--hairline); }
+.rp-kill-row:first-child { border-top: none; }
+.rp-kill-name { min-width: 0; font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rp-kill-cat { font-size: 10.5px; padding: 2px 7px; border-radius: 9px; white-space: nowrap;
+  background: color-mix(in srgb, var(--violet) 12%, transparent); color: var(--text-dim); }
+.rp-kill-mo { text-align: right; font-size: 11.5px; color: var(--text-faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rp-kill-yr { text-align: right; font-family: var(--font-head); font-weight: 500; font-size: 13.5px;
+  color: var(--coral); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
 /* ---- detected recurring (Emma phase 1c) ---- */
 .rd-body { display: flex; flex-direction: column; gap: 8px; }
 .rd-card { display: flex; align-items: center; gap: 12px; padding: 12px 15px;
