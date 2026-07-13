@@ -7,43 +7,125 @@ import { mountProjects } from "./projects.js";
 import { mountForecast } from "./forecast.js";
 import { mountSpending } from "./spending.js";
 import { mountTasks } from "./tasks.js";
+import { mountHome } from "./home.js";
+import { mountReports } from "./reports.js";
+import { mountMerchants } from "./merchants.js";
 import { openSettings } from "./settings.js";
 import { APP_VERSION, BUILD_DATE } from "./version.js";
 
 console.log(`HouseholdOS Planner v${APP_VERSION} (built ${BUILD_DATE})`);
 
-/* ---- Nav ---- */
-const TABS = [
-  { id: "forecast", label: "Forecast", icon: "line-chart" },
-  { id: "spending", label: "Spending", icon: "receipt" },
-  { id: "projects", label: "Projects", icon: "hammer" },
-  { id: "finances", label: "Finances", icon: "wallet" },
-  { id: "tasks",    label: "Tasks",    icon: "list-checks" },
+/* ---- Nav ----
+   One definition drives the desktop sidebar, the mobile bottom nav, AND the
+   mobile "More" drawer. Pages are grouped by mental mode; the three "pillar"
+   views (Forecast/Spending/Projects) plus Home get permanent bottom-nav slots.
+   Settings isn't a screen — it opens the gear sheet (action:"settings"). */
+const NAV = [
+  { id: "home",      label: "Home",      icon: "home",         group: "Home"   },
+  { id: "forecast",  label: "Forecast",  icon: "line-chart",   group: "Plan"   },
+  { id: "projects",  label: "Projects",  icon: "hammer",       group: "Plan"   },
+  { id: "tasks",     label: "Tasks",     icon: "list-checks",  group: "Plan"   }, // temp: folds into Projects
+  { id: "spending",  label: "Spending",  icon: "receipt",      group: "Spend"  },
+  { id: "reports",   label: "Reports",   icon: "bar-chart-3",  group: "Spend"  },
+  { id: "merchants", label: "Merchants", icon: "store",        group: "Spend"  },
+  { id: "finances",  label: "Finances",  icon: "wallet",       group: "Set up" },
+  { id: "settings",  label: "Settings",  icon: "settings",     group: "Set up", action: "settings" },
 ];
+const GROUPS = ["Home", "Plan", "Spend", "Set up"];
+const BOTTOM = ["home", "forecast", "spending", "projects"]; // + a "More" button
 
-function buildNav() {
-  const side = document.getElementById("sidebar");
-  const bot  = document.getElementById("bottomnav");
-  side.innerHTML = ""; bot.innerHTML = "";
-  for (const t of TABS) {
-    for (const [host, cls] of [[side, "navitem"], [bot, "bnitem"]]) {
+const itemHtml = (t) => `<i data-lucide="${t.icon}"></i><span>${t.label}</span>`;
+
+// Grouped list — used by both the desktop sidebar and the mobile More drawer.
+function renderGrouped(host) {
+  host.innerHTML = "";
+  let first = true;
+  for (const g of GROUPS) {
+    const items = NAV.filter((n) => n.group === g);
+    if (!items.length) continue;
+    if (g !== "Home") {
+      const h = document.createElement("div");
+      h.className = "nav-group" + (first ? " first" : "");
+      h.textContent = g;
+      host.appendChild(h);
+    }
+    first = false;
+    for (const t of items) {
       const n = document.createElement("div");
-      n.className = cls + (t.id === "forecast" ? " active" : "");
-      n.dataset.tab = t.id;
-      n.innerHTML = `<i data-lucide="${t.icon}"></i><span>${t.label}</span>`;
-      n.onclick = () => go(t.id);
+      n.className = "navitem"; n.dataset.nav = t.id;
+      n.innerHTML = itemHtml(t);
+      n.onclick = () => onNav(t.id);
       host.appendChild(n);
     }
   }
+}
+
+function renderBottom(host) {
+  host.innerHTML = "";
+  for (const id of BOTTOM) {
+    const t = NAV.find((n) => n.id === id);
+    const n = document.createElement("div");
+    n.className = "bnitem"; n.dataset.nav = id;
+    n.innerHTML = itemHtml(t);
+    n.onclick = () => onNav(id);
+    host.appendChild(n);
+  }
+  const more = document.createElement("div");
+  more.className = "bnitem"; more.dataset.nav = "more";
+  more.innerHTML = `<i data-lucide="menu"></i><span>More</span>`;
+  more.onclick = openDrawer;
+  host.appendChild(more);
+}
+
+function buildNav() {
+  renderGrouped(document.getElementById("sidebar"));
+  renderGrouped(document.getElementById("drawer-list"));
+  renderBottom(document.getElementById("bottomnav"));
+  document.querySelector("#moredrawer .drawer-veil").onclick = closeDrawer;
   lucide.createIcons();
 }
 
-function go(tab) {
+// A nav tap — Settings opens the sheet; every other item routes via the hash.
+function onNav(id) {
+  const t = NAV.find((n) => n.id === id);
+  closeDrawer();
+  if (t && t.action === "settings") { openSettings(); return; }
+  location.hash = "#/" + id;
+}
+
+/* ---- Router (hash-based) ----
+   Top-level views today; the sub-route slot (#/projects/:id) is where the
+   project detail page will hang in the next step. Back button works for free
+   because each nav pushes a hash entry. */
+function currentView() {
+  const h = location.hash.replace(/^#\/?/, "");
+  return h.split("/")[0] || "home";
+}
+function applyRoute() {
+  const view = currentView();
+  const known = NAV.some((n) => n.id === view && n.action !== "settings");
+  const v = known ? view : "home";
   document.querySelectorAll(".screen").forEach((s) =>
-    s.classList.toggle("active", s.dataset.screen === tab));
-  document.querySelectorAll("[data-tab]").forEach((n) =>
-    n.classList.toggle("active", n.dataset.tab === tab));
+    s.classList.toggle("active", s.dataset.screen === v));
+  document.querySelectorAll("[data-nav]").forEach((n) => {
+    const on = n.dataset.nav === v || (n.dataset.nav === "more" && !BOTTOM.includes(v));
+    n.classList.toggle("active", on);
+  });
   lucide.createIcons();
+}
+window.addEventListener("hashchange", applyRoute);
+
+/* ---- More drawer (mobile) ---- */
+function openDrawer() {
+  const d = document.getElementById("moredrawer");
+  d.hidden = false;
+  requestAnimationFrame(() => d.classList.add("open"));
+}
+function closeDrawer() {
+  const d = document.getElementById("moredrawer");
+  if (d.hidden) return;
+  d.classList.remove("open");
+  setTimeout(() => { d.hidden = true; }, 240);
 }
 
 /* ---- Theme ---- */
@@ -92,11 +174,15 @@ async function onSession(session) {
       await resolveHousehold();
       await loadAll();      // pull whatever exists
       await seedIfEmpty();  // idempotent placeholders on first open
+      mountHome();
       mountForecast();
       mountSpending();
       mountFinances();
       mountProjects();
+      mountReports();
+      mountMerchants();
       mountTasks();
+      applyRoute();         // land on the hash (defaults to Home)
     }
   } else {
     gate.style.display = "grid";

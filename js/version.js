@@ -5,5 +5,5 @@
 //  can confirm which deployed build the browser actually loaded.
 //    major.minor.patch — minor tracks a shipped phase, patch a fix/tweak.
 // ============================================================================
-export const APP_VERSION = "1.20.1";  // 1.20.1 = (1) Emma self-heals a stale/expired session: on a 401 the emma-sheet call refreshes the session once and retries (fixes "Couldn't load Emma" after the iOS PWA sits idle); (2) Forecast "This month" Projects group is now a spend group (expected = this month's planned project cost, actual = linked payments that hit, progress bar + per-project paid/due lines) instead of just the remaining figure
-export const BUILD_DATE  = "2026-07-13";
+export const APP_VERSION = "1.21.0";  // 1.21.0 = V2 step 1: navigation + routing rework. New Home dashboard (three equal pillars — Forecast/Spending/Projects — each taps through), regrouped nav (Home + Plan/Spend/Set up) driven by one definition, mobile bottom nav (Home·Forecast·Spending·Projects) + a "More" grouped drawer, hash-based router (back button works; sub-route slot ready for project detail). Reports + Merchants added as stub screens. Tasks temporarily lives under Plan until it folds into Projects (step 2).
+export const BUILD_DATE  = "2026-07-14";

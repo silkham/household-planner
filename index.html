@@ -796,6 +796,48 @@ select.field { appearance: none; background-image:
 .sheet-delete { margin-top: 8px; width: 100%; padding: 11px; border-radius: var(--r-ctrl);
                 border: 1px solid color-mix(in srgb, var(--coral) 35%, var(--hairline));
                 background: none; color: var(--coral); font-family: var(--font-body); font-weight: 600; font-size: 14px; cursor: pointer; }
+
+/* ============================================================= *
+ *  Nav groups (sidebar + More drawer) + mobile More drawer      *
+ * ============================================================= */
+.nav-group { font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase;
+             color: var(--text-faint); font-weight: 600; padding: 13px 14px 4px; }
+.nav-group.first { padding-top: 2px; }
+
+.drawer { position: fixed; inset: 0; z-index: 40; }
+.drawer[hidden] { display: none; }
+.drawer-veil { position: absolute; inset: 0; background: rgba(4,6,9,.5);
+               opacity: 0; transition: opacity var(--dur-2) var(--ease); }
+.drawer.open .drawer-veil { opacity: 1; }
+.drawer-sheet {
+  position: absolute; left: 0; right: 0; bottom: 0; background: var(--card-solid);
+  border-top: 1px solid var(--hairline); border-radius: 20px 20px 0 0;
+  padding: 10px 14px calc(18px + env(safe-area-inset-bottom, 0px));
+  box-shadow: 0 -14px 40px rgba(0,0,0,.4); max-height: 82vh; overflow: auto;
+  transform: translateY(100%); transition: transform var(--dur-2) var(--ease);
+}
+.drawer.open .drawer-sheet { transform: none; }
+.drawer-grip { width: 36px; height: 4px; border-radius: 2px; background: var(--hairline); margin: 2px auto 8px; }
+@media (min-width: 860px) { .drawer { display: none; } }
+
+/* ============================================================= *
+ *  Home dashboard — three equal pillars                         *
+ * ============================================================= */
+.hp-greet { font-family: var(--font-head); font-weight: 500; font-size: 22px;
+            letter-spacing: -.01em; margin: 2px 0 14px; }
+.hp-pillar { padding: 15px 16px; margin-bottom: 14px; cursor: pointer; }
+.hp-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.hp-meta { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-dim); }
+.hp-meta svg { width: 15px; height: 15px; }
+.hp-big { font-family: var(--font-head); font-weight: 500; font-size: 27px;
+          letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.hp-big .of { font-size: 16px; color: var(--text-dim); }
+.hp-spark { width: 100%; height: 40px; margin: 8px 0 2px; display: block; }
+.hp-sub { font-size: 12.5px; color: var(--text-dim); margin-top: 6px; }
+.hp-sub .neg { color: var(--coral); }
+.hp-bar { height: 7px; border-radius: 5px; background: var(--hairline); overflow: hidden; margin-top: 9px; }
+.hp-bar > i { display: block; height: 100%; border-radius: 5px; background: var(--mint); }
+.hp-bar.blue > i { background: var(--blue); }
 </style>
 </head>
 <body>
@@ -838,8 +880,13 @@ select.field { appearance: none; background-image:
     <nav class="sidebar" id="sidebar"></nav>
 
     <main>
+      <!-- Home -->
+      <section class="screen active" data-screen="home">
+        <div id="home-root"></div>
+      </section>
+
       <!-- Forecast -->
-      <section class="screen active" data-screen="forecast">
+      <section class="screen" data-screen="forecast">
         <div id="forecast-root"></div>
       </section>
 
@@ -853,12 +900,22 @@ select.field { appearance: none; background-image:
         <div id="projects-root"></div>
       </section>
 
+      <!-- Reports -->
+      <section class="screen" data-screen="reports">
+        <div id="reports-root"></div>
+      </section>
+
+      <!-- Merchants -->
+      <section class="screen" data-screen="merchants">
+        <div id="merchants-root"></div>
+      </section>
+
       <!-- Finances -->
       <section class="screen" data-screen="finances">
         <div id="finances-root"></div>
       </section>
 
-      <!-- Tasks -->
+      <!-- Tasks (folds into Projects in a later step) -->
       <section class="screen" data-screen="tasks">
         <div id="tasks-root"></div>
       </section>
@@ -867,6 +924,15 @@ select.field { appearance: none; background-image:
 
   <!-- bottom nav (mobile) -->
   <nav class="bottomnav" id="bottomnav"></nav>
+
+  <!-- More drawer (mobile) — the grouped menu -->
+  <div class="drawer" id="moredrawer" hidden>
+    <div class="drawer-veil"></div>
+    <div class="drawer-sheet">
+      <div class="drawer-grip"></div>
+      <nav id="drawer-list"></nav>
+    </div>
+  </div>
 </div>
 
 <script type="module" src="js/app.js"></script>
