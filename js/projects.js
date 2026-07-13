@@ -9,6 +9,7 @@ import { openSheet, fmtGBP, fmtMonth } from "./sheet.js";
 import { projectAffordability, monthIndex, fromIndex } from "./engine.js";
 import { fetchEmma, cachedEmmaTxns } from "./emma.js";
 import { txnKey, synthKey } from "./categories.js";
+import { renderTasksInto } from "./tasks.js";
 
 const opt = (arr) => arr.map((v) => ({ label: v, value: v }));
 const CATEGORIES = opt(["Structural", "Cosmetic", "Repair", "Garden", "Energy", "Furniture"]);
@@ -418,6 +419,44 @@ function durationBar(p) {
   return `<div class="dur-bar" title="${dur} month${dur > 1 ? "s" : ""}">${cells}</div>`;
 }
 
+// active = the statuses the engine actually draws into the forecast.
+const isActive = (p) => ["Planned", "Quoted", "In Progress"].includes(p.status);
+const spentOf = (p) => {
+  const its = itemsFor(p.id);
+  return its.length ? sumAct(its) : (Number(p.actual_cost) || 0);
+};
+
+// Top-of-tab dashboard: committed vs spent across active projects + whether
+// the spendable cash on hand covers what's still outstanding.
+function projectsDashboard() {
+  const active = state.projects.filter(isActive);
+  const committed = active.reduce((s, p) => s + projectCost(p), 0);
+  const spent = active.reduce((s, p) => s + spentOf(p), 0);
+  const remaining = Math.max(0, committed - spent);
+  const cash = state.accounts
+    .filter((a) => a.available_for_projects)
+    .reduce((s, a) => s + (Number(a.balance) || 0), 0);
+  const covers = cash >= remaining;
+  const tint = remaining === 0 ? "mint" : covers ? "mint" : cash >= remaining * 0.5 ? "amber" : "coral";
+  const pct = remaining > 0 ? Math.min(100, cash / remaining * 100) : 100;
+  const note = remaining === 0
+    ? `Nothing outstanding across ${active.length} active project${active.length === 1 ? "" : "s"}.`
+    : covers
+      ? `${fmtGBP(cash)} available covers the ${fmtGBP(remaining)} still outstanding.`
+      : `${fmtGBP(cash)} available — ${fmtGBP(remaining - cash)} short of the ${fmtGBP(remaining)} outstanding.`;
+  return `<div class="glass pdash">
+    <div class="pdash-stats">
+      <div class="pdash-stat"><span class="pdash-l">Committed</span><span class="pdash-v">${fmtGBP(committed)}</span></div>
+      <div class="pdash-stat"><span class="pdash-l">Spent</span><span class="pdash-v">${fmtGBP(spent)}</span></div>
+      <div class="pdash-stat"><span class="pdash-l">Remaining</span><span class="pdash-v">${fmtGBP(remaining)}</span></div>
+    </div>
+    <div class="pdash-fund">
+      <div class="pdash-bar"><i style="width:${pct.toFixed(0)}%; background:var(--${tint})"></i></div>
+      <div class="pdash-note" style="color:var(--${tint === "mint" ? "text-dim" : tint})">${note}</div>
+    </div>
+  </div>`;
+}
+
 function projectCard(p, forecast) {
   const score = priorityOf(p);
   const cost = projectCost(p);
@@ -425,6 +464,13 @@ function projectCard(p, forecast) {
   const itemCount = itemsFor(p.id).length;
   const budget = p.budget_status && p.budget_status !== "estimate"
     ? badge(p.budget_status, BUDGET_TINT[p.budget_status]) : "";
+  const act = spentOf(p);
+  const pct = cost > 0 ? Math.min(100, act / cost * 100) : 0;
+  const over = act > cost;
+  const progress = act > 0
+    ? `<div class="pc-prog"><div class="pc-progbar"><i style="width:${pct.toFixed(0)}%; background:var(--${over ? "coral" : "mint"})"></i></div>
+        <span class="pc-progtxt">${fmtGBP(act)} spent</span></div>`
+    : durationBar(p);
   return `<div class="fcard pcard" data-id="${p.id}">
     <div class="pc-tick" title="${aff.label}"><i data-lucide="${aff.icon}" style="color:var(--${aff.tint})"></i></div>
     <div class="fc-main">
@@ -434,7 +480,7 @@ function projectCard(p, forecast) {
         ${p.category ? badge(p.category, "blue") : ""} ${budget}
         <span class="fc-dim">${fmtMonth(p.target_start_month)}</span>
         ${itemCount ? `<span class="fc-dim">· ${itemCount} item${itemCount > 1 ? "s" : ""}</span>` : ""}</div>
-      ${durationBar(p)}
+      ${progress}
     </div>
     <span class="fc-amt">${fmtGBP(cost)}</span>
   </div>`;
@@ -450,34 +496,53 @@ function sortProjects(list) {
   return arr;
 }
 
+// Projects screen has two sub-views: the project dashboard/cards and the
+// cross-project Tasks roll-up (folded in from the old Tasks tab, Session 17).
+let view = "projects";
+const VIEWS = [{ id: "projects", label: "Projects" }, { id: "tasks", label: "Tasks" }];
+
 function render() {
   const root = document.getElementById("projects-root");
   if (!root) return;
-  const forecast = currentForecast();
-  const sorted = sortProjects(state.projects);
 
-  const sortCtrl = `<div class="segmented p-sort">${
-    SORTS.map((s) => `<button class="seg${s.id === sortMode ? " on" : ""}" data-sort="${s.id}">${s.label}</button>`).join("")
+  const viewCtrl = `<div class="segmented p-view">${
+    VIEWS.map((v) => `<button class="seg${v.id === view ? " on" : ""}" data-view="${v.id}">${v.label}</button>`).join("")
   }</div>`;
+  const sub = view === "tasks"
+    ? "Every line item across your projects, in one checklist."
+    : "Tap a project for its dashboard. The tick shows whether each fits the forecast.";
 
-  const body = sorted.length
-    ? sorted.map((p) => projectCard(p, forecast)).join("")
-    : `<div class="sec-empty">No projects yet. Add the garage, shed, hallway floor, kitchen…</div>`;
-
-  root.innerHTML = `
-    <div class="p-head">
-      <div><div class="eyebrow">Projects</div>
-        <p class="sec-sub">Sorted by ${SORTS.find((s) => s.id === sortMode).label.toLowerCase()}. The tick shows whether each fits the forecast.</p></div>
+  const head = `<div class="p-head">
+      <div><div class="eyebrow">Projects</div><p class="sec-sub">${sub}</p></div>
       <button class="sec-add" data-newproject><i data-lucide="plus"></i></button>
     </div>
-    ${sortCtrl}
-    <div class="p-list">${body}</div>`;
+    ${viewCtrl}`;
+
+  if (view === "tasks") {
+    root.innerHTML = `${head}<div id="proj-tasks"></div>`;
+    renderTasksInto(root.querySelector("#proj-tasks"));
+  } else {
+    const forecast = currentForecast();
+    const sorted = sortProjects(state.projects);
+    const sortCtrl = `<div class="segmented p-sort">${
+      SORTS.map((s) => `<button class="seg${s.id === sortMode ? " on" : ""}" data-sort="${s.id}">${s.label}</button>`).join("")
+    }</div>`;
+    const body = sorted.length
+      ? sorted.map((p) => projectCard(p, forecast)).join("")
+      : `<div class="sec-empty">No projects yet. Add the garage, shed, hallway floor, kitchen…</div>`;
+    root.innerHTML = `${head}
+      ${projectsDashboard()}
+      ${sortCtrl}
+      <div class="p-list">${body}</div>`;
+    root.querySelectorAll("[data-sort]").forEach((b) =>
+      b.onclick = () => { sortMode = b.dataset.sort; render(); });
+    root.querySelectorAll(".pcard").forEach((c) =>
+      c.onclick = () => { location.hash = "#/projects/" + c.dataset.id; });
+  }
 
   root.querySelector("[data-newproject]").onclick = () => editProject({});
-  root.querySelectorAll("[data-sort]").forEach((b) =>
-    b.onclick = () => { sortMode = b.dataset.sort; render(); });
-  root.querySelectorAll(".pcard").forEach((c) =>
-    c.onclick = () => { location.hash = "#/projects/" + c.dataset.id; });
+  root.querySelectorAll("[data-view]").forEach((b) =>
+    b.onclick = () => { view = b.dataset.view; render(); });
   window.lucide && lucide.createIcons({ nameAttr: "data-lucide" });
 }
 

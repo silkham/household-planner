@@ -1,10 +1,12 @@
 // ============================================================================
-//  tasks.js — the Tasks tab. Every project_items row across all projects rolled
-//  up into one checklist, grouped by project. Filters: To do · Quoted · Over
-//  budget. Editing here writes the same project_items rows the project detail
-//  sheet shows (one source of truth) via projects.js's editItem/syncTotals.
+//  tasks.js — the cross-project line-item roll-up. Every project_items row
+//  across all projects in one checklist, grouped by project. Filters: To do ·
+//  Quoted · Over budget. Editing here writes the same project_items rows the
+//  project detail page shows (one source of truth) via editItem/syncTotals.
+//  V2 (Session 17): no longer a top-level tab — rendered as the "Tasks"
+//  sub-view of the Projects screen via renderTasksInto(root).
 // ============================================================================
-import { state, subscribe, saveRow } from "./store.js";
+import { state, saveRow } from "./store.js";
 import { fmtGBP } from "./sheet.js";
 import { editItem, syncTotals } from "./projects.js";
 
@@ -50,8 +52,10 @@ function itemRow(i) {
   </div>`;
 }
 
+let taskRoot = null;
+
 function render() {
-  const root = document.getElementById("tasks-root");
+  const root = taskRoot;
   if (!root) return;
   const test = (FILTERS.find((f) => f.id === filter) || FILTERS[0]).test;
 
@@ -77,10 +81,7 @@ function render() {
         : "Nothing matches this filter."}</div>`;
 
   root.innerHTML = `
-    <div class="p-head">
-      <div><div class="eyebrow">Tasks</div>
-        <p class="sec-sub">Every project line item in one list. Tick to mark done, or type an actual to log spend.</p></div>
-    </div>
+    <p class="sec-sub" style="margin:0 0 10px">Every project line item in one list. Tick to mark done, or type an actual to log spend.</p>
     ${filterCtrl}
     ${body}`;
 
@@ -115,7 +116,9 @@ function render() {
   window.lucide && lucide.createIcons({ nameAttr: "data-lucide" });
 }
 
-export function mountTasks() {
-  subscribe(render);
+// Render the roll-up into a container owned by the Projects screen. projects.js
+// re-calls this on every render (it's subscribed to state), so no own subscribe.
+export function renderTasksInto(root) {
+  taskRoot = root;
   render();
 }

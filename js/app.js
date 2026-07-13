@@ -7,7 +7,6 @@ import { mountProjects } from "./projects.js";
 import { mountProjectDetail, showProjectDetail } from "./project-detail.js";
 import { mountForecast } from "./forecast.js";
 import { mountSpending } from "./spending.js";
-import { mountTasks } from "./tasks.js";
 import { mountHome } from "./home.js";
 import { mountReports } from "./reports.js";
 import { mountMerchants } from "./merchants.js";
@@ -25,7 +24,6 @@ const NAV = [
   { id: "home",      label: "Home",      icon: "home",         group: "Home"   },
   { id: "forecast",  label: "Forecast",  icon: "line-chart",   group: "Plan"   },
   { id: "projects",  label: "Projects",  icon: "hammer",       group: "Plan"   },
-  { id: "tasks",     label: "Tasks",     icon: "list-checks",  group: "Plan"   }, // temp: folds into Projects
   { id: "spending",  label: "Spending",  icon: "receipt",      group: "Spend"  },
   { id: "reports",   label: "Reports",   icon: "bar-chart-3",  group: "Spend"  },
   { id: "merchants", label: "Merchants", icon: "store",        group: "Spend"  },
@@ -188,7 +186,6 @@ async function onSession(session) {
       mountProjectDetail();
       mountReports();
       mountMerchants();
-      mountTasks();
       applyRoute();         // land on the hash (defaults to Home)
     }
   } else {
