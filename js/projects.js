@@ -28,20 +28,24 @@ const AFFORD = {
 };
 const BUDGET_TINT = { estimate: "text-faint", budgeted: "mint", tracking: "blue", closed: "violet" };
 
-const badge = (text, tint) =>
+export const badge = (text, tint) =>
   `<span class="hpill" style="background:color-mix(in srgb, var(--${tint}) 16%, transparent); color:var(--${tint})">${text}</span>`;
 
+// Shared maps/helpers below are exported so the routed project-detail page
+// (js/project-detail.js) re-presents the same data without duplicating logic.
+export { AFFORD, STATUS_TINT, BUDGET_TINT };
+
 // ---- derived totals from line items ----------------------------------------
-const itemsFor = (pid) =>
+export const itemsFor = (pid) =>
   state.project_items.filter((i) => i.project_id === pid)
     .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
-const sumEst = (items) => items.reduce((s, i) => s + (Number(i.estimated_cost) || 0), 0);
-const sumAct = (items) => items.reduce((s, i) => s + (i.actual_cost == null ? 0 : Number(i.actual_cost)), 0);
-const hasActuals = (items) => items.some((i) => i.actual_cost != null);
+export const sumEst = (items) => items.reduce((s, i) => s + (Number(i.estimated_cost) || 0), 0);
+export const sumAct = (items) => items.reduce((s, i) => s + (i.actual_cost == null ? 0 : Number(i.actual_cost)), 0);
+export const hasActuals = (items) => items.some((i) => i.actual_cost != null);
 
 // ---- linked transactions (an item's actual_cost = sum of its links) --------
-const linksFor = (itemId) => state.project_item_txns.filter((l) => l.item_id === itemId);
-const sumLinks = (itemId) => linksFor(itemId).reduce((s, l) => s + (Number(l.amount) || 0), 0);
+export const linksFor = (itemId) => state.project_item_txns.filter((l) => l.item_id === itemId);
+export const sumLinks = (itemId) => linksFor(itemId).reduce((s, l) => s + (Number(l.amount) || 0), 0);
 
 // Link a batch of Emma transactions to a line item, then re-derive its actual
 // cost and roll it up to the project. Exported so the Spending tab can push a
@@ -73,14 +77,14 @@ export async function linkTransactionsToItem(itemId, txns) {
   render();
 }
 // the cashflow number: derived sum when line items exist, else the manual field
-const projectCost = (p) => {
+export const projectCost = (p) => {
   const its = itemsFor(p.id);
   return its.length ? sumEst(its) : (Number(p.estimated_cost) || 0);
 };
 
 // ---- priority: a single manually-set 1–5 field -----------------------------
 // (Replaced the derived impact/urgency/effort × weights score in Session 4.)
-const priorityOf = (p) => Number(p.priority) || 3;
+export const priorityOf = (p) => Number(p.priority) || 3;
 
 // keep the stored project total in sync with its line items (engine reads it)
 export async function syncTotals(pid) {
@@ -115,12 +119,15 @@ function projectFields(p) {
   return f;
 }
 
-function editProject(record) {
+// `fieldsOnly` suppresses the rich line-items/budget/spread block — used by the
+// routed detail page's edit pencil, since that page renders the block itself.
+export function editProject(record, opts = {}) {
   const isNew = !record.id;
   const p = isNew
     ? { name: "", category: "Structural", status: "Planned", priority: 3,
         estimated_cost: 0, target_start_month: null, duration_months: 1, budget_status: "estimate", notes: null }
     : record;
+  const showExtra = !isNew && !opts.fieldsOnly;
 
   openSheet({
     title: isNew ? "New project" : "Project",
@@ -132,13 +139,14 @@ function editProject(record) {
       const dur = Math.max(1, Number(d.duration_months) || 1);
       return `${fmtGBP(cost)} over ${dur} mo (${fmtGBP(cost / dur)}/mo) from ${fmtMonth(d.target_start_month)}`;
     },
-    extra: isNew ? null : (box) => renderDetailExtra(box, p),
-    onDone: render,
+    extra: showExtra ? (box) => renderDetailExtra(box, p) : null,
+    onDone: opts.onDone || render,
   });
 }
 
 // ---- the rich lower half: line items, budget lock, variance, spread --------
-function renderDetailExtra(box, p) {
+// Exported so the routed detail page mounts the identical block.
+export function renderDetailExtra(box, p) {
   const rebuild = () => {
     const items = itemsFor(p.id);
     const est = items.length ? sumEst(items) : (Number(p.estimated_cost) || 0);
@@ -215,7 +223,7 @@ function renderDetailExtra(box, p) {
 }
 
 // ---- cost-spread override (per active month) -------------------------------
-function activeMonths(p) {
+export function activeMonths(p) {
   const start = monthIndex(p.target_start_month);
   if (start == null) return [];
   const dur = Math.max(1, Number(p.duration_months) || 1);
@@ -281,6 +289,7 @@ export function editItem(project, record, onDone) {
     fields.push({ key: "actual_cost", label: "Actual £ (blank = not spent)", type: "money", step: "50", emptyNull: true });
   fields.push(
     { key: "status", label: "Status", type: "segmented", options: ITEM_STATUS },
+    { key: "due_month", label: "Due (for the timeline)", type: "month" },
     { key: "notes", label: "Notes", type: "textarea" },
   );
 
@@ -468,10 +477,7 @@ function render() {
   root.querySelectorAll("[data-sort]").forEach((b) =>
     b.onclick = () => { sortMode = b.dataset.sort; render(); });
   root.querySelectorAll(".pcard").forEach((c) =>
-    c.onclick = () => {
-      const p = state.projects.find((x) => x.id === c.dataset.id);
-      if (p) editProject(p);
-    });
+    c.onclick = () => { location.hash = "#/projects/" + c.dataset.id; });
   window.lucide && lucide.createIcons({ nameAttr: "data-lucide" });
 }
 

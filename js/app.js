@@ -4,6 +4,7 @@
 import { supa, resolveHousehold, loadAll, seedIfEmpty } from "./store.js";
 import { mountFinances } from "./finances.js";
 import { mountProjects } from "./projects.js";
+import { mountProjectDetail, showProjectDetail } from "./project-detail.js";
 import { mountForecast } from "./forecast.js";
 import { mountSpending } from "./spending.js";
 import { mountTasks } from "./tasks.js";
@@ -97,20 +98,25 @@ function onNav(id) {
    Top-level views today; the sub-route slot (#/projects/:id) is where the
    project detail page will hang in the next step. Back button works for free
    because each nav pushes a hash entry. */
-function currentView() {
+function currentRoute() {
   const h = location.hash.replace(/^#\/?/, "");
-  return h.split("/")[0] || "home";
+  const [view, id] = h.split("/");
+  return { view: view || "home", id: id || null };
 }
 function applyRoute() {
-  const view = currentView();
+  const { view, id } = currentRoute();
+  const isProjDetail = view === "projects" && id;
   const known = NAV.some((n) => n.id === view && n.action !== "settings");
-  const v = known ? view : "home";
+  const base = known ? view : "home";
+  const screen = isProjDetail ? "project-detail" : base;
+  const navActive = isProjDetail ? "projects" : base;
   document.querySelectorAll(".screen").forEach((s) =>
-    s.classList.toggle("active", s.dataset.screen === v));
+    s.classList.toggle("active", s.dataset.screen === screen));
   document.querySelectorAll("[data-nav]").forEach((n) => {
-    const on = n.dataset.nav === v || (n.dataset.nav === "more" && !BOTTOM.includes(v));
+    const on = n.dataset.nav === navActive || (n.dataset.nav === "more" && !BOTTOM.includes(navActive));
     n.classList.toggle("active", on);
   });
+  if (isProjDetail) showProjectDetail(id);
   lucide.createIcons();
 }
 window.addEventListener("hashchange", applyRoute);
@@ -179,6 +185,7 @@ async function onSession(session) {
       mountSpending();
       mountFinances();
       mountProjects();
+      mountProjectDetail();
       mountReports();
       mountMerchants();
       mountTasks();
