@@ -8,7 +8,7 @@
 //  The pure helpers (buildExcludedSet / categoryNames) are shared by spending.js
 //  and recurring detection so both agree on what counts.
 // ============================================================================
-import { state, saveRow, saveSettings, bulkReassignRules } from "./store.js";
+import { state, saveRow, bulkReassignRules } from "./store.js";
 import { openSheet, fmtGBP } from "./sheet.js";
 
 // Non-counting unless a managed row explicitly flips them — Emma's own
@@ -142,26 +142,6 @@ const managedFor = (name) =>
 // Expenses = the counting spend that ISN'T a known bill (see reconcile.js).
 export const BUDGET_GROUP = "General Expenses";
 
-// Rough monthly average of DISCRETIONARY spend — counting outflows that aren't
-// tied to a known recurring bill — a sensible starting budget for General.
-function suggestedBudget(txns) {
-  if (!txns || !txns.length) return null;
-  const rules = rulesMap();
-  const excluded = buildExcludedSet(state.categories);
-  const known = new Set(state.recurring_flows.map((f) => f.emma_match_key).filter(Boolean));
-  const isKnown = (t) => known.has(t.customName) || known.has(t.merchant) || known.has(t.counterparty);
-  const byMonth = new Map();
-  for (const t of txns) {
-    if (t.amount >= 0 || !t.dateInt) continue;
-    if (excluded.has(effectiveCategory(t, rules)) || isKnown(t)) continue;
-    const mk = `${Math.floor(t.dateInt / 10000)}-${Math.floor((t.dateInt % 10000) / 100)}`;
-    byMonth.set(mk, (byMonth.get(mk) || 0) - t.amount);
-  }
-  if (byMonth.size < 2) return null;   // need a couple of months to average
-  const total = [...byMonth.values()].reduce((s, v) => s + v, 0);
-  return Math.round(total / byMonth.size / 10) * 10;   // nearest £10
-}
-
 // Per-merchant aggregates for every merchant whose EFFECTIVE category is
 // `sourceName` right now → [{ key, count, total }] sorted by spend desc.
 function merchantAgg(sourceName, txns, rules) {
@@ -254,8 +234,6 @@ function openReassign(sourceName, txns, onDone) {
   });
 }
 
-const budgets = () => (state.settings && state.settings.forecast_budgets) || {};
-
 // ---- manager section (bottom of the Spending tab) --------------------------
 export function categoryManagerHtml(txns) {
   const names = categoryNames(state.categories, txns || [], rulesMap());
@@ -276,24 +254,13 @@ export function categoryManagerHtml(txns) {
     </div>`;
   }).join("");
 
-  const geBudget = budgets()[BUDGET_GROUP];
-  const suggest = suggestedBudget(txns);
-  const budgetRow = `<div class="cat-budget">
-    <span class="cat-blabel">“${BUDGET_GROUP}” monthly budget</span>
-    <input class="field" id="ge-budget" type="number" inputmode="decimal" step="10"
-      value="${geBudget != null ? geBudget : ""}"
-      placeholder="${suggest != null ? suggest : "e.g. 2500"}" />
-    <span class="cat-bhint">${suggest != null ? `avg ~£${suggest}/mo` : "your discretionary budget — the one editable “This month” line"}</span>
-  </div>`;
-
   return `<section class="fsection cat-section">
     <div class="sec-head">
       <div><div class="eyebrow">Categories</div>
-        <p class="sec-sub">Toggle off any bucket that shouldn't count as spend — transfers, credit-card payments, one-offs. Set your discretionary budget below.</p></div>
+        <p class="sec-sub">Toggle off any bucket that shouldn't count as spend — transfers, credit-card payments, one-offs. The “General Expenses” budget lives in Settings.</p></div>
     </div>
     <div class="sec-body cat-body">
       ${rows || `<div class="sec-empty">No categories yet — load Emma above.</div>`}
-      ${budgetRow}
       <div class="cat-add">
         <input class="field" id="cat-new" placeholder="New category name" />
         <button class="cat-addbtn" id="cat-add-btn"><i data-lucide="plus"></i>Add</button>
@@ -312,17 +279,6 @@ export function wireCategoryManager(root, txns, onDone) {
       else   await saveRow("categories", { name, counts_as_spend: !nowCounts, sort_order: 99 });
     } catch (e) { alert("Couldn't update category: " + e.message); }
   });
-
-  // General Expenses monthly budget → settings.forecast_budgets
-  const budgetInp = root.querySelector("#ge-budget");
-  if (budgetInp) budgetInp.onchange = async () => {
-    const raw = (budgetInp.value || "").trim();
-    const next = { ...budgets() };
-    if (raw === "") delete next[BUDGET_GROUP];
-    else next[BUDGET_GROUP] = Number(raw) || 0;
-    try { await saveSettings({ forecast_budgets: next }); }
-    catch (e) { alert("Couldn't save budget: " + e.message); }
-  };
 
   // Move / merge / delete — re-bucket a whole category's merchants at once.
   root.querySelectorAll("[data-move]").forEach((btn) => btn.onclick = () =>

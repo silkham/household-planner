@@ -10,7 +10,7 @@ import { mountSpending } from "./spending.js";
 import { mountHome } from "./home.js";
 import { mountReports } from "./reports.js";
 import { mountMerchants } from "./merchants.js";
-import { openSettings } from "./settings.js";
+import { mountSettings } from "./settings.js";
 import { APP_VERSION, BUILD_DATE } from "./version.js";
 
 console.log(`HouseholdOS Planner v${APP_VERSION} (built ${BUILD_DATE})`);
@@ -28,7 +28,7 @@ const NAV = [
   { id: "reports",   label: "Reports",   icon: "bar-chart-3",  group: "Spend"  },
   { id: "merchants", label: "Merchants", icon: "store",        group: "Spend"  },
   { id: "finances",  label: "Finances",  icon: "wallet",       group: "Set up" },
-  { id: "settings",  label: "Settings",  icon: "settings",     group: "Set up", action: "settings" },
+  { id: "settings",  label: "Settings",  icon: "settings",     group: "Set up" },
 ];
 const GROUPS = ["Home", "Plan", "Spend", "Set up"];
 const BOTTOM = ["home", "forecast", "spending", "projects"]; // + a "More" button
@@ -84,11 +84,9 @@ function buildNav() {
   lucide.createIcons();
 }
 
-// A nav tap — Settings opens the sheet; every other item routes via the hash.
+// A nav tap — route via the hash.
 function onNav(id) {
-  const t = NAV.find((n) => n.id === id);
   closeDrawer();
-  if (t && t.action === "settings") { openSettings(); return; }
   location.hash = "#/" + id;
 }
 
@@ -104,7 +102,7 @@ function currentRoute() {
 function applyRoute() {
   const { view, id } = currentRoute();
   const isProjDetail = view === "projects" && id;
-  const known = NAV.some((n) => n.id === view && n.action !== "settings");
+  const known = NAV.some((n) => n.id === view);
   const base = known ? view : "home";
   const screen = isProjDetail ? "project-detail" : base;
   const navActive = isProjDetail ? "projects" : base;
@@ -146,9 +144,6 @@ document.getElementById("themeBtn").onclick = () =>
   applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
 applyTheme(localStorage.getItem("hp-theme") || "dark");
 
-/* ---- Settings gear ---- */
-document.getElementById("gearBtn").onclick = () => openSettings();
-
 /* ---- Auth ---- */
 const gate = document.getElementById("gate");
 const app  = document.getElementById("app");
@@ -186,6 +181,7 @@ async function onSession(session) {
       mountProjectDetail();
       mountReports();
       mountMerchants();
+      mountSettings();
       applyRoute();         // land on the hash (defaults to Home)
     }
   } else {

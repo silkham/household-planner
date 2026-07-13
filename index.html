@@ -893,6 +893,17 @@ main { flex: 1; padding: 20px 18px 108px; }
 }
 .sheet-txtbtn.primary { color: var(--mint); font-weight: 600; }
 .sheet-txtbtn[disabled] { opacity: .5; }
+/* ---- Settings page ---- */
+.set-card { padding: 16px 16px 18px; margin-bottom: 14px; }
+.set-card .eyebrow { display: block; margin-bottom: 12px; }
+.set-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+.set-field:last-child { margin-bottom: 0; }
+.set-label { font-size: 13px; font-weight: 500; color: var(--text-dim); }
+.set-inputwrap { position: relative; display: flex; align-items: center; }
+.set-inputwrap .field { flex: 1; }
+.set-prefix { position: absolute; left: 12px; color: var(--text-faint); font-size: 14px; pointer-events: none; }
+.set-inputwrap:has(.set-prefix) .field { padding-left: 26px; }
+.set-about { font-size: 13px; color: var(--text-dim); line-height: 1.6; margin: 0; }
 .sheet-body { display: flex; flex-direction: column; gap: 14px; padding-top: 8px; }
 .fld { display: flex; flex-direction: column; gap: 6px; }
 .fld-label { font-size: 12.5px; font-weight: 500; color: var(--text-dim); }
@@ -1048,7 +1059,6 @@ select.field { appearance: none; background-image:
   <header class="appbar">
     <div class="wordmark" style="flex:1;">Household<span class="accent">·</span>Planner</div>
     <button class="iconbtn" id="themeBtn" title="Toggle theme"><i data-lucide="moon"></i></button>
-    <button class="iconbtn" id="gearBtn" title="Settings"><i data-lucide="settings"></i></button>
     <button class="iconbtn" id="signoutBtn" title="Sign out"><i data-lucide="log-out"></i></button>
   </header>
 
@@ -1095,6 +1105,11 @@ select.field { appearance: none; background-image:
       <!-- Finances -->
       <section class="screen" data-screen="finances">
         <div id="finances-root"></div>
+      </section>
+
+      <!-- Settings -->
+      <section class="screen" data-screen="settings">
+        <div id="settings-root"></div>
       </section>
     </main>
   </div>
