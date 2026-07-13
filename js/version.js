@@ -5,5 +5,5 @@
 //  can confirm which deployed build the browser actually loaded.
 //    major.minor.patch — minor tracks a shipped phase, patch a fix/tweak.
 // ============================================================================
-export const APP_VERSION = "1.20.0";  // 1.20.0 = project linking flows through the app: (A) link a merchant's payments to a project line item straight from the Spending categorise sheet; (B) Forecast "This month" carves project-linked txns out of General (budgeted under Projects); (C) Spending month panel gains a Projects section mirroring Forecast
-export const BUILD_DATE  = "2026-07-12";
+export const APP_VERSION = "1.20.1";  // 1.20.1 = (1) Emma self-heals a stale/expired session: on a 401 the emma-sheet call refreshes the session once and retries (fixes "Couldn't load Emma" after the iOS PWA sits idle); (2) Forecast "This month" Projects group is now a spend group (expected = this month's planned project cost, actual = linked payments that hit, progress bar + per-project paid/due lines) instead of just the remaining figure
+export const BUILD_DATE  = "2026-07-13";

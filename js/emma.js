@@ -37,6 +37,24 @@ export function clearEmmaCache() { _feedCache = null; }
 // Lets option-lists reuse the memoised txns without going async.
 export function cachedEmmaTxns() { return (_feedCache && _feedCache.txns) || []; }
 
+// Invoke the emma-sheet function, self-healing a stale/expired session.
+// Supabase access tokens last ~1h and iOS PWAs suspend the background refresh,
+// so a foregrounded app can send an expired token → the function's
+// requireMember returns 401 ("Couldn't load Emma"). On a 401 we refresh the
+// session once and retry; if it still fails, the refresh token is dead too and
+// the user must sign in again.
+async function invokeEmma(body) {
+  const call = () => supa.functions.invoke("emma-sheet", { body });
+  let { data, error } = await call();
+  if (error && error.context && error.context.status === 401) {
+    const { error: rErr } = await supa.auth.refreshSession();
+    if (!rErr) ({ data, error } = await call());
+    if (error && error.context && error.context.status === 401)
+      throw new Error("Session expired — reload the app or sign in again.");
+  }
+  return { data, error };
+}
+
 export async function fetchEmma(force = false) {
   if (_feedCache && !force) return _feedCache;
   const s = state.settings || {};
@@ -44,9 +62,7 @@ export async function fetchEmma(force = false) {
   const tab = s.emma_tab || "Mclean Household";
   if (!sheetId) throw new Error("No Emma sheet configured — set it in Settings.");
 
-  const { data, error } = await supa.functions.invoke("emma-sheet", {
-    body: { sheetId, tab },
-  });
+  const { data, error } = await invokeEmma({ sheetId, tab });
   if (error) throw error;
   if (data && data.error) throw new Error(data.error);
 

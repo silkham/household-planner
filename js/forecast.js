@@ -10,6 +10,7 @@ import { fetchEmma } from "./emma.js";
 import { reconcileMonth } from "./reconcile.js";
 import { buildExcludedSet } from "./categories.js";
 import { openRecurringSheet } from "./finances.js";
+import { plannedCostInMonth, monthIndex } from "./engine.js";
 
 const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const shortMonth = (ym) => {
@@ -336,29 +337,61 @@ function groupRow(g) {
     </button>${bar}${body}</div>`;
 }
 
-// Planned project spend for the current month — mirrors the future-month rows,
-// which show a Projects figure. Sourced from the engine (not Emma-matched), so
-// each project line is tagged "planned". Renders as an expandable expense group.
-function projectGroup(fc) {
-  const m0 = fc.months[0];
-  if (!m0 || !(m0.project_spend > 0.5)) return "";
-  const lines = m0.breakdown.expenses.filter((b) => b.source === "project" && b.amount > 0.5);
-  const path = `g:expense:Projects`;
-  const open = rcExpanded.has(path);
-  const rows = lines.map((l) => `<div class="rc-cat">
-    <div class="rc-crow"><div class="rc-chead" style="cursor:default">
-      <span class="rc-chev"></span><span class="rc-cname">${l.name}</span>
-      <span class="rc-tag amber">planned</span>
-      <span class="rc-nums"><b style="color:var(--coral)">${fmtGBP(l.amount)}</b></span>
-    </div></div></div>`).join("");
-  const body = open ? `<div class="rc-cats">${rows}</div>` : "";
-  return `<div class="rc-grp ${open ? "open" : ""}">
-    <button class="rc-ghead" data-rc="${encodeURIComponent(path)}">
-      <i data-lucide="chevron-${open ? "down" : "right"}" class="rc-chev"></i>
-      <span class="rc-gname">Projects</span>
-      <span class="rc-tag amber">planned</span>
-      <span class="rc-gnums"><b style="color:var(--coral)">${fmtGBP(m0.project_spend)}</b></span>
-    </button>${body}</div>`;
+// Projects this month as a SPEND group (expected vs actual, like the others):
+//   expected = the month's planned project cost (engine plannedCostInMonth,
+//              un-shrunk — this month's slice of the budget)
+//   actual   = the project-linked transactions that have HIT this month
+// Each project is a line (paid/due + expandable to the payments that landed);
+// the group carries the progress bar. Rendered via groupRow so it matches the
+// recurring / General groups exactly.
+const PROJECT_ACTIVE = new Set(["Planned", "Quoted", "In Progress"]);
+// Emma date "M/D/YYYY" → 'YYYY-MM'
+function usMonth(s) {
+  const p = String(s || "").split("/");
+  if (p.length !== 3) return null;
+  return `${p[2]}-${String(+p[0] || 0).padStart(2, "0")}`;
+}
+const projEst = (p) => {
+  const its = state.project_items.filter((i) => i.project_id === p.id);
+  return its.length ? its.reduce((s, i) => s + (Number(i.estimated_cost) || 0), 0)
+                    : (Number(p.estimated_cost) || 0);
+};
+const round2 = (n) => Math.round(n * 100) / 100;
+
+function projectGroup() {
+  const month = thisMonth();
+  const mIdx = monthIndex(month);
+  // linked transactions that landed THIS month, per project
+  const itemProj = new Map(state.project_items.map((i) => [i.id, i.project_id]));
+  const hitByProj = new Map();   // pid → { amount, txns[] }
+  for (const l of state.project_item_txns) {
+    if (usMonth(l.txn_date) !== month) continue;
+    const pid = itemProj.get(l.item_id);
+    if (!pid) continue;
+    let e = hitByProj.get(pid);
+    if (!e) { e = { amount: 0, txns: [] }; hitByProj.set(pid, e); }
+    e.amount += Number(l.amount) || 0;
+    e.txns.push({ customName: l.merchant, date: l.txn_date, amount: -(Number(l.amount) || 0) });
+  }
+
+  const lines = [];
+  for (const p of state.projects) {
+    const expected = PROJECT_ACTIVE.has(p.status)
+      ? plannedCostInMonth({ ...p, estimated_cost: projEst(p) }, mIdx) : 0;
+    const hit = hitByProj.get(p.id) || { amount: 0, txns: [] };
+    if (expected < 0.5 && hit.amount < 0.5) continue;   // nothing planned or spent
+    lines.push({ id: p.id, name: p.name, expected: round2(expected),
+      actual: round2(hit.amount), received: hit.amount > 0.5, noEdit: true, txns: hit.txns });
+  }
+  if (!lines.length) return "";
+  lines.sort((a, b) => b.expected - a.expected || b.actual - a.actual);
+
+  const expected = round2(lines.reduce((s, l) => s + l.expected, 0));
+  const actual = round2(lines.reduce((s, l) => s + l.actual, 0));
+  const over = actual > expected + 0.005;
+  return groupRow({ name: "Projects", kind: "expense", type: "flows",
+    expected, actual, pendingExpected: over ? 0 : round2(Math.max(0, expected - actual)),
+    over, lines });
 }
 
 function buildReconcile(fc) {
@@ -380,7 +413,7 @@ function buildReconcile(fc) {
       projectKeys: new Set(state.project_item_txns.map((l) => l.emma_txn_id)),
     });
     const groups = [...r.income, ...r.expense];
-    const projHtml = projectGroup(fc);
+    const projHtml = projectGroup();
     body = (groups.length || projHtml)
       ? groups.map(groupRow).join("") + projHtml
       : `<div class="sec-empty">No recurring flows or spend matched this month yet.</div>`;
