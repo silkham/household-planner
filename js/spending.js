@@ -399,10 +399,14 @@ function uncategorisedHtml(spend, rules) {
 }
 
 // ---- re-categorise sheet ---------------------------------------------------
-function categorise(key, currentCat) {
+// Exported so other tabs (e.g. Merchants) open the exact same re-file sheet,
+// incl. the project-link hook. `feed` defaults to Spending's own cached txns;
+// callers without that state (Merchants) pass cachedEmmaTxns() so options and
+// project-linking still work even if Spending was never opened.
+export function categorise(key, currentCat, feed = txns, onDone = render) {
   const existing = state.category_rules.find((r) => r.match_key === key);
   const excluded = buildExcludedSet(state.categories);
-  const options = categoryNames(state.categories, txns || [], rulesMap())
+  const options = categoryNames(state.categories, feed || [], rulesMap())
     .map((n) => ({ value: n, label: excluded.has(n) ? `${n} · not counted` : n }));
   const current = existing ? existing.category
     : (currentCat === "Uncategorised" ? "" : currentCat);
@@ -433,8 +437,8 @@ function categorise(key, currentCat) {
     },
     // transaction-side project linking: attach this merchant's payments to a
     // project line item (they then read as Projects, not General/discretionary).
-    extra: (box) => renderProjectLink(box, key),
-    onDone: render,
+    extra: (box) => renderProjectLink(box, key, feed),
+    onDone,
   });
 }
 
@@ -452,9 +456,9 @@ function projectItemGroups() {
 // "Add to project" section inside the categorise sheet — lists this merchant's
 // individual payments so you can link (or MOVE) each one to a line item. A txn
 // already on another project shows where it sits; linking it moves it.
-function renderProjectLink(box, key) {
+function renderProjectLink(box, key, feed = txns) {
   const groups = projectItemGroups();
-  const matching = (txns || []).filter((t) => t.amount < 0 &&
+  const matching = (feed || []).filter((t) => t.amount < 0 &&
     (t.customName === key || t.merchant === key || t.counterparty === key))
     .sort((a, b) => (b.dateInt || 0) - (a.dateInt || 0));
 

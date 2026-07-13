@@ -31,3 +31,4 @@ elif command -v osascript >/dev/null 2>&1; then echo "runtime: osascript (JavaSc
 run_bundle js/engine.js    tests/engine.tests.js    "cashflow engine"
 run_bundle js/recurring.js tests/recurring.tests.js "recurring detection"
 run_bundle js/reconcile.js tests/reconcile.tests.js "current-month reconciliation"
+run_bundle js/merchants.js tests/merchants.tests.js "merchants ranking"
