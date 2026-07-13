@@ -117,8 +117,14 @@ Forecast — the dip warning lives inside the Forecast card.
    sub-route slot for project detail; Home dashboard with three equal pillars;
    Reports/Merchants stubs. Tasks temporarily under Plan. Needs live-Pages
    verification (browser preview blocked in sandbox).
-2. **Projects rework** — project detail pages, `project_items` dates +
-   timeline, Projects-tab-as-dashboard, fold in Tasks. Highest user value.
+2. ~~**Projects rework**~~ — **SHIPPED v1.22.0** (Session 17). Routed project
+   detail page `#/projects/:id` (header + Budget/Spent/Remaining/Affordability
+   tiles + an "across the build" month track using the new `project_items.
+   due_month` + recent linked payments + the reused line-items/budget/spread
+   block). Projects tab is now a dashboard (committed/spent + funded-vs-cash
+   bar, cards with spend progress). Tasks folded in as a "Projects | Tasks"
+   sub-view toggle (removed from nav). Migration `20260713120000_project_items_
+   due_month.sql` applied live.
 3. **Merchants page** — reuses the Emma feed + existing txn/category logic.
 4. **Reports / Budgeting page** — category trends over months + cost-to-kill
    surfacing. Keep aggregations pure + testable.
