@@ -47,16 +47,29 @@ const sumLinks = (itemId) => linksFor(itemId).reduce((s, l) => s + (Number(l.amo
 // cost and roll it up to the project. Exported so the Spending tab can push a
 // merchant's transactions onto a project from the categorise sheet (the
 // transaction-side entry point). Idempotent — re-linking a txn just moves it.
+// Recompute one line item's actual_cost from its links and roll it up.
+async function recomputeItem(itemId) {
+  const it = state.project_items.find((i) => i.id === itemId);
+  if (!it) return;
+  await saveRow("project_items", { id: itemId, actual_cost: sumLinks(itemId) });
+  await syncTotals(it.project_id);
+}
+
 export async function linkTransactionsToItem(itemId, txns) {
+  // A txn may already be linked to another item — the upsert MOVES it (unique on
+  // emma_txn_id), so both the target AND any source items need recomputing, or
+  // the source is left overstating its actual.
+  const affected = new Set([itemId]);
   for (const t of txns) {
+    const key = synthKey(t);
+    const prev = state.project_item_txns.find((l) => l.emma_txn_id === key);
+    if (prev && prev.item_id !== itemId) affected.add(prev.item_id);
     await linkProjectTxn({
-      item_id: itemId, emma_txn_id: synthKey(t),
+      item_id: itemId, emma_txn_id: key,
       merchant: txnKey(t), txn_date: t.date, amount: Math.abs(Number(t.amount) || 0),
     });
   }
-  await saveRow("project_items", { id: itemId, actual_cost: sumLinks(itemId) });
-  const it = state.project_items.find((i) => i.id === itemId);
-  if (it) await syncTotals(it.project_id);
+  for (const id of affected) await recomputeItem(id);
   render();
 }
 // the cashflow number: derived sum when line items exist, else the manual field
@@ -302,7 +315,15 @@ function renderLinks(box, project, item) {
   const draw = (focusSearch) => {
     const links = linksFor(item.id);
     const act = sumLinks(item.id);
-    const linkedKeys = new Set(state.project_item_txns.map((l) => l.emma_txn_id));
+    // Only hide txns already on THIS item (they're in the linked list above).
+    // Txns linked to OTHER items stay searchable so you can MOVE them here.
+    const linkedHere = new Set(links.map((l) => l.emma_txn_id));
+    const linkByKey = new Map(state.project_item_txns.map((l) => [l.emma_txn_id, l]));
+    const itemLabel = (id) => {
+      const it = state.project_items.find((i) => i.id === id);
+      const p = it && state.projects.find((x) => x.id === it.project_id);
+      return it ? `${p ? p.name + " · " : ""}${it.name}` : "another item";
+    };
 
     const linkedHtml = links.length
       ? links.map((l) => `<div class="lx">
@@ -318,18 +339,21 @@ function renderLinks(box, project, item) {
     if (q.trim()) {
       const ql = q.trim().toLowerCase();
       matches = feed
-        .filter((t) => t.amount < 0 && !linkedKeys.has(synthKey(t)))
+        .filter((t) => t.amount < 0 && !linkedHere.has(synthKey(t)))
         .filter((t) => `${t.customName || ""} ${t.merchant || ""} ${t.counterparty || ""}`.toLowerCase().includes(ql)
                     || String(Math.abs(t.amount)).includes(ql))
         .sort((a, b) => (b.dateInt || 0) - (a.dateInt || 0))
         .slice(0, 12);
     }
     const resultsHtml = !q.trim() ? "" : (matches.length
-      ? matches.map((t, i) => `<button class="lx-res" data-add="${i}">
+      ? matches.map((t, i) => {
+          const l = linkByKey.get(synthKey(t));
+          return `<button class="lx-res" data-add="${i}">
           <span class="lx-name">${txnKey(t)}</span>
+          ${l ? `<span class="lx-linked">in ${itemLabel(l.item_id)}</span>` : ""}
           <span class="lx-date">${t.date}</span>
           <span class="lx-amt">${fmtGBP(Math.abs(t.amount))}</span>
-        </button>`).join("")
+        </button>`; }).join("")
       : `<div class="sec-empty" style="margin:0">${feed.length ? "No matching transactions." : (fetching ? "Loading Emma…" : "Emma not loaded — type to search once it's ready.")}</div>`);
 
     box.innerHTML = `
@@ -349,11 +373,9 @@ function renderLinks(box, project, item) {
     box.querySelectorAll("[data-add]").forEach((b) => b.onclick = async () => {
       const t = matches[+b.dataset.add];
       if (!t) return;
-      await linkProjectTxn({
-        item_id: item.id, emma_txn_id: synthKey(t),
-        merchant: txnKey(t), txn_date: t.date, amount: Math.abs(Number(t.amount) || 0),
-      });
-      await recompute();
+      // Routes through the shared helper so a txn linked to another item is
+      // MOVED (both items recomputed), not silently double-counted.
+      await linkTransactionsToItem(item.id, [t]);
       q = ""; draw(true);
     });
     const search = box.querySelector(`#${CSS.escape(inputId)}`);

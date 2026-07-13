@@ -449,12 +449,20 @@ function projectItemGroups() {
   })).filter((g) => g.items.length);
 }
 
-// "Add to project" section inside the categorise sheet — links every outflow
-// from this merchant currently in the feed to the chosen line item.
+// "Add to project" section inside the categorise sheet — lists this merchant's
+// individual payments so you can link (or MOVE) each one to a line item. A txn
+// already on another project shows where it sits; linking it moves it.
 function renderProjectLink(box, key) {
   const groups = projectItemGroups();
   const matching = (txns || []).filter((t) => t.amount < 0 &&
-    (t.customName === key || t.merchant === key || t.counterparty === key));
+    (t.customName === key || t.merchant === key || t.counterparty === key))
+    .sort((a, b) => (b.dateInt || 0) - (a.dateInt || 0));
+
+  const itemLabel = (id) => {
+    const it = state.project_items.find((i) => i.id === id);
+    const p = it && state.projects.find((x) => x.id === it.project_id);
+    return it ? `${p ? p.name + " · " : ""}${it.name}` : "a project";
+  };
 
   const draw = () => {
     if (!groups.length) {
@@ -462,28 +470,43 @@ function renderProjectLink(box, key) {
         <div class="sec-empty" style="margin:0">Add a line item to a project first, then link payments to it here.</div>`;
       return;
     }
-    const linked = new Set(state.project_item_txns.map((l) => l.emma_txn_id));
-    const unlinked = matching.filter((t) => !linked.has(synthKey(t)));
-    const already = matching.length - unlinked.length;
-    const total = unlinked.reduce((s, t) => s + Math.abs(t.amount), 0);
+    const linkByKey = new Map(state.project_item_txns.map((l) => [l.emma_txn_id, l]));
+    const unlinked = matching.filter((t) => !linkByKey.has(synthKey(t)));
     const opts = groups.map((g) =>
       `<optgroup label="${g.name}">${g.items.map((i) => `<option value="${i.id}">${i.name}</option>`).join("")}</optgroup>`).join("");
+    const rows = matching.map((t, i) => {
+      const l = linkByKey.get(synthKey(t));
+      const tag = l ? `<span class="lx-linked">${itemLabel(l.item_id)}</span>` : "";
+      return `<div class="lx">
+        <div class="lx-main"><span class="lx-name">${t.date}</span>${tag}</div>
+        <span class="lx-amt">${fmtGBP(Math.abs(t.amount))}</span>
+        <button class="pi-one" data-one="${i}">${l ? "Move" : "Link"}</button>
+      </div>`;
+    }).join("");
     box.innerHTML = `
       <div class="pi-head"><span class="eyebrow">Add to project</span>
         <span class="pi-total">${matching.length} payment${matching.length === 1 ? "" : "s"}</span></div>
       <select class="field lx-proj">${opts}</select>
-      <button class="pi-add" data-linkproj ${unlinked.length ? "" : "disabled"}>
-        <i data-lucide="link"></i> ${unlinked.length
-          ? `Link ${unlinked.length} payment${unlinked.length === 1 ? "" : "s"} · ${fmtGBP(total)}`
-          : "All payments linked"}</button>
-      ${already ? `<div class="fld-help">${already} already linked to a project.</div>` : ""}`;
-    const btn = box.querySelector("[data-linkproj]");
-    if (btn && unlinked.length) btn.onclick = async () => {
-      const itemId = box.querySelector(".lx-proj").value;
-      if (!itemId) return;
-      btn.disabled = true;
+      <div class="lx-list" style="margin-top:8px">${rows}</div>
+      ${unlinked.length > 1
+        ? `<button class="pi-btn" data-linkall><i data-lucide="link"></i> Link all ${unlinked.length} unlinked to selected</button>`
+        : ""}`;
+    const target = () => box.querySelector(".lx-proj").value;
+    box.querySelectorAll("[data-one]").forEach((b) => b.onclick = async () => {
+      const t = matching[+b.dataset.one];
+      const itemId = target();
+      if (!t || !itemId) return;
+      b.disabled = true;
+      await linkTransactionsToItem(itemId, [t]);   // links, or moves if already linked
+      draw();
+    });
+    const all = box.querySelector("[data-linkall]");
+    if (all) all.onclick = async () => {
+      const itemId = target();
+      if (!itemId || !unlinked.length) return;
+      all.disabled = true;
       await linkTransactionsToItem(itemId, unlinked);
-      draw();          // now all linked
+      draw();
     };
     window.lucide && lucide.createIcons({ nameAttr: "data-lucide" });
   };

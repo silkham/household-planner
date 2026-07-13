@@ -426,6 +426,13 @@ main { flex: 1; padding: 20px 18px 108px; }
 .lx-res .lx-name { flex: 1; }
 .lx-res .lx-date { display: inline; margin: 0; }
 .lx-res .lx-amt { color: var(--text-dim); }
+/* per-transaction link/move button + "linked elsewhere" tag */
+.pi-one { flex: none; padding: 6px 12px; border-radius: 8px; cursor: pointer;
+          border: 1px solid color-mix(in srgb, var(--mint) 40%, var(--hairline));
+          background: none; color: var(--mint); font-family: var(--font-body);
+          font-weight: 600; font-size: 12.5px; }
+.pi-one[disabled] { opacity: .55; cursor: not-allowed; }
+.lx-linked { display: inline-block; margin-top: 3px; font-size: 11px; font-weight: 600; color: var(--amber); }
 
 /* ============================================================= *
  *  Tasks tab                                                    *
