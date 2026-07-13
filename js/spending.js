@@ -8,7 +8,7 @@
 import { state, subscribe, saveRow, saveCategoryRule } from "./store.js";
 import { fetchEmma } from "./emma.js";
 import { openSheet, fmtGBP, fmtMonth } from "./sheet.js";
-import { buildExcludedSet, categoryNames, categoryManagerHtml, wireCategoryManager, txnKey, effectiveCategory, guessCategory, synthKey } from "./categories.js";
+import { buildExcludedSet, categoryNames, txnKey, effectiveCategory, guessCategory, synthKey } from "./categories.js";
 import { linkTransactionsToItem } from "./projects.js";
 
 const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -611,10 +611,8 @@ function render() {
     }
   }
 
-  // Category manager sits at the foot of the tab once the feed is loaded
-  // (hidden while searching to keep the results view focused).
-  const managerHtml = (txns != null && !searchQ.trim()) ? categoryManagerHtml(txns) : "";
-  root.innerHTML = head + searchBox + bodyHtml + managerHtml;
+  // The category manager now lives on its own Categories page (Set up).
+  root.innerHTML = head + searchBox + bodyHtml;
 
   // wiring
   const srch = root.querySelector("#sp-search");
@@ -635,7 +633,6 @@ function render() {
   root.querySelectorAll(".sp-sr").forEach((b) => b.onclick = () => {
     categorise(decodeURIComponent(b.dataset.key), decodeURIComponent(b.dataset.cat));
   });
-  if (txns != null && !searchQ.trim()) wireCategoryManager(root, txns, render);
   root.querySelectorAll("[data-refresh]").forEach((b) => b.onclick = () => load(true));
   root.querySelectorAll(".sp-bar").forEach((g) => g.onclick = () => {
     selMonth = g.dataset.month; openCats.clear(); render();

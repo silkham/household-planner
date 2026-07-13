@@ -10,6 +10,7 @@ import { mountSpending } from "./spending.js";
 import { mountHome } from "./home.js";
 import { mountReports } from "./reports.js";
 import { mountMerchants } from "./merchants.js";
+import { mountCategoriesPage } from "./categories-page.js";
 import { mountSettings } from "./settings.js";
 import { APP_VERSION, BUILD_DATE } from "./version.js";
 
@@ -27,8 +28,9 @@ const NAV = [
   { id: "spending",  label: "Spending",  icon: "receipt",      group: "Spend"  },
   { id: "reports",   label: "Reports",   icon: "bar-chart-3",  group: "Spend"  },
   { id: "merchants", label: "Merchants", icon: "store",        group: "Spend"  },
-  { id: "finances",  label: "Finances",  icon: "wallet",       group: "Set up" },
-  { id: "settings",  label: "Settings",  icon: "settings",     group: "Set up" },
+  { id: "finances",   label: "Finances",   icon: "wallet",     group: "Set up" },
+  { id: "categories", label: "Categories", icon: "tags",       group: "Set up" },
+  { id: "settings",   label: "Settings",   icon: "settings",   group: "Set up" },
 ];
 const GROUPS = ["Home", "Plan", "Spend", "Set up"];
 const BOTTOM = ["home", "forecast", "spending", "projects"]; // + a "More" button
@@ -181,6 +183,7 @@ async function onSession(session) {
       mountProjectDetail();
       mountReports();
       mountMerchants();
+      mountCategoriesPage();
       mountSettings();
       applyRoute();         // land on the hash (defaults to Home)
     }
