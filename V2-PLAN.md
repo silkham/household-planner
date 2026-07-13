@@ -111,9 +111,12 @@ Forecast — the dip warning lives inside the Forecast card.
 
 ## Build sequencing (multi-session)
 
-1. **Nav / IA refactor + routing primitive + Home shell** — new menu chrome
-   (sidebar + bottom-nav-plus-More), client-side routing, regroup existing
-   pages, stand up the Home dashboard. The scaffold everything hangs off.
+1. ~~**Nav / IA refactor + routing primitive + Home shell**~~ — **SHIPPED
+   v1.21.0** (commit `9838dae`, on main, not yet pushed/deployed). One NAV def
+   drives sidebar + bottom-nav + More drawer; hash router with back support +
+   sub-route slot for project detail; Home dashboard with three equal pillars;
+   Reports/Merchants stubs. Tasks temporarily under Plan. Needs live-Pages
+   verification (browser preview blocked in sandbox).
 2. **Projects rework** — project detail pages, `project_items` dates +
    timeline, Projects-tab-as-dashboard, fold in Tasks. Highest user value.
 3. **Merchants page** — reuses the Emma feed + existing txn/category logic.
