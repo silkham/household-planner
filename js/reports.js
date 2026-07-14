@@ -16,7 +16,7 @@ import { fetchEmma, cachedEmmaTxns } from "./emma.js";
 import { fmtGBP } from "./sheet.js";
 import { buildExcludedSet } from "./categories.js";
 import { categorise } from "./spending.js";
-import { rankMerchants } from "./merchants.js";
+import { rankMerchants, merchantDetailHtml } from "./merchants.js";
 
 const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const ordLabel = (o) => `${MON[o % 12]} '${String(Math.floor(o / 12)).slice(2)}`;
@@ -112,6 +112,7 @@ let loadErr = null;
 let monthsBack = 6;       // null = all history
 let sortMode = "total";   // "total" | "mover"
 let selCat = null;        // drill-down category (null = list)
+let selMerchant = null;   // drill-down merchant within a category (null = category list)
 
 const PERIODS = [[3, "3m"], [6, "6m"], [12, "12m"], [null, "All"]];
 
@@ -161,24 +162,29 @@ function totalsChart(months, monthlyTotals) {
 
 // ---- cost-to-kill (annualised recurring commitments) -----------------------
 function costToKill() {
+  // Fixed commitments still on the table — those marked Keep drop off.
   const flows = state.recurring_flows
-    .filter((f) => f.kind === "expense")
+    .filter((f) => f.kind === "expense" && f.decision !== "keep")
     .map((f) => ({ f, yr: annualCost(f) }))
     .filter((x) => x.yr > 0)
     .sort((a, b) => b.yr - a.yr);
   if (!flows.length) return "";
   const totYr = flows.reduce((s, x) => s + x.yr, 0);
-  const rows = flows.slice(0, 12).map(({ f, yr }) =>
-    `<div class="rp-kill-row">
-      <span class="rp-kill-name">${f.name}</span>
+  const rows = flows.slice(0, 12).map(({ f, yr }) => {
+    const d = f.decision;
+    const chip = d === "kill" ? `<span class="rp-kill-chip kill">kill</span>`
+      : d === "review" ? `<span class="rp-kill-chip review">review</span>` : "";
+    return `<div class="rp-kill-row">
+      <span class="rp-kill-name">${f.name}${chip}</span>
       <span class="rp-kill-cat">${f.category || ""}</span>
       <span class="rp-kill-mo">${fmtGBP(yr / 12)}/mo</span>
       <span class="rp-kill-yr">${fmtGBP(yr)}/yr</span>
-    </div>`).join("");
+    </div>`;
+  }).join("");
   return `<div class="rp-sec">
     <div class="rp-sec-head"><h2>Cost to kill</h2>
-      <span class="rp-sec-sub">Recurring commitments · ${fmtGBP(totYr)}/yr total</span></div>
-    <p class="muted rp-kill-note">Every fixed commitment, biggest per-year first. Cutting one saves the yearly figure — edit or end it in Finances.</p>
+      <span class="rp-sec-sub">Not-kept commitments · ${fmtGBP(totYr)}/yr total</span></div>
+    <p class="muted rp-kill-note">Fixed commitments you haven't marked Keep, biggest per-year first. Tag Keep/Review/Kill on a flow in Finances, then work them in <a href="#/analysis" class="rp-link">Analysis</a>.</p>
     <div class="rp-kill">${rows}</div>
   </div>`;
 }
@@ -205,6 +211,7 @@ function catDetail(cat, rules, excluded) {
 function trendsBody() {
   const rules = rulesMap();
   const excluded = buildExcludedSet(state.categories);
+  if (selMerchant) return merchantDetailHtml(txns, selMerchant, rules, { backLabel: selCat || "All categories" });
   if (selCat) return catDetail(selCat, rules, excluded);
 
   const { months, rows, monthlyTotals, grandTotal } =
@@ -265,10 +272,16 @@ function render() {
   });
   root.querySelectorAll("[data-sort]").forEach((b) => b.onclick = () => { sortMode = b.dataset.sort; render(); });
   root.querySelectorAll(".rp-catrow").forEach((b) => b.onclick = () => { selCat = decodeURIComponent(b.dataset.catkey); render(); });
-  root.querySelectorAll("[data-back]").forEach((b) => b.onclick = () => { selCat = null; render(); });
-  // merchant rows inside a category drill-down → re-file via the Spending sheet
-  root.querySelectorAll(".mc-row[data-mkey]").forEach((b) => b.onclick = () =>
-    categorise(decodeURIComponent(b.dataset.mkey), decodeURIComponent(b.dataset.mcat), cachedEmmaTxns(), render));
+  // back: from merchant → category, else from category → list
+  root.querySelectorAll("[data-back]").forEach((b) => b.onclick = () => {
+    if (selMerchant) selMerchant = null; else selCat = null;
+    render();
+  });
+  // merchant rows inside a category drill-down → merchant detail (bars + txns)
+  root.querySelectorAll(".mc-row[data-mkey]").forEach((b) => b.onclick = () => { selMerchant = decodeURIComponent(b.dataset.mkey); render(); });
+  // re-file from the merchant detail (.mc-tx rows + the .mc-refile button)
+  root.querySelectorAll(".mc-tx, .mc-refile").forEach((b) => b.onclick = () =>
+    categorise(decodeURIComponent(b.dataset.key), decodeURIComponent(b.dataset.cat), cachedEmmaTxns(), render));
 
   window.lucide && lucide.createIcons({ nameAttr: "data-lucide" });
 }

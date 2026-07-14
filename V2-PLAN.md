@@ -132,6 +132,15 @@ Forecast — the dip warning lives inside the Forecast card.
    sortable Biggest/Movers, tap → ranked merchants → re-file) + a "Cost to kill"
    list of annualised recurring commitments. Pure `reportCategories` +
    `annualCost` cores + tests/reports.tests.js (32; 226 total green).
+4b. ~~**Reports enrich + Analysis screen**~~ — **SHIPPED v1.27.0** (Session 21,
+   V2 rework batch C). A Keep/Review/Kill `decision` on BOTH `recurring_flows`
+   and `categories` (migration 20260714120000). Reports cost-to-kill drops
+   `keep` flows + links to Analysis; Reports category drill now shows the
+   merchant graph (shared `merchantDetailHtml`). NEW `#/analysis` screen (Spend
+   group) merges flows + buckets into Kill/Review/Undecided/Keep with an inline
+   decision setter + merchant drill-down. Presentation-only; 228 tests green.
+   Still queued in this rework batch: Home snapshot rework + bigger mobile
+   Forecast chart.
 5. **What-if slider** — Forecast/Projects UI over the already-pure engine.
 6. **Add-people function** — small, in Settings.
 

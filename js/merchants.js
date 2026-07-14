@@ -176,7 +176,13 @@ function merchantsBody() {
   return controls + summary + `<div class="mc-list">${list}</div>`;
 }
 
-function merchantDetail(key, rules) {
+const merchantDetail = (key, rules) => merchantDetailHtml(txns, key, rules);
+
+// Shared per-merchant detail: monthly outflow bars + every transaction, with
+// a Re-file affordance. Exported so Reports re-uses the exact same view on its
+// category → merchant drill-through (pass a custom back label). The caller wires
+// [data-back] / .mc-tx / .mc-refile handlers on its own render.
+export function merchantDetailHtml(txns, key, rules, { backLabel = "All merchants" } = {}) {
   const mine = (txns || []).filter((t) => txnKey(t) === key)
     .sort((a, b) => (b.dateInt || 0) - (a.dateInt || 0));
   const cat = mine.length ? effectiveCategory(mine[0], rules) : "Uncategorised";
@@ -207,7 +213,7 @@ function merchantDetail(key, rules) {
     </button>`;
   }).join("");
 
-  return `<button class="mc-back" data-back><i data-lucide="arrow-left"></i>All merchants</button>
+  return `<button class="mc-back" data-back><i data-lucide="arrow-left"></i>${backLabel}</button>
     <div class="mc-dhead">
       <div><h2 class="mc-dname">${key}</h2>
         <p class="sec-sub">${cat} · ${fmtGBP(totalOut)} out · ${payments} payment${payments === 1 ? "" : "s"}</p></div>
