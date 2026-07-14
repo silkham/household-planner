@@ -45,14 +45,6 @@ const thisMonth = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 };
-// Emma link date "M/D/YYYY" → 'YYYY-MM'
-const usMonth = (s) => {
-  const p = String(s || "").split("/");
-  return p.length === 3 ? `${p[2]}-${String(+p[0] || 0).padStart(2, "0")}` : null;
-};
-// +£ / −£ with an explicit sign (fmtGBP alone renders "£-1,200").
-const signed = (n) => (n < 0 ? "−" : "+") + fmtGBP(Math.abs(n));
-
 const emmaConfigured = () => !!(state.settings && state.settings.emma_sheet_id);
 
 // Derived estimate/actual for a project (sum of line items when it has them).
@@ -83,43 +75,44 @@ function reconcileNow() {
     projectKeys: new Set(state.project_item_txns.map((l) => l.emma_txn_id)),
   });
 }
-function projectActual(month) {
-  let a = 0;
-  for (const l of state.project_item_txns)
-    if (usMonth(l.txn_date) === month) a += Number(l.amount) || 0;
-  return a;
-}
+// The "This month" card headlines DISCRETIONARY spend — General Expenses (every
+// counting outflow that ISN'T a known bill, from reconcileMonth) vs the monthly
+// budget. Known bills are carved out via emma_match_key, so this is the number
+// the household actually steers month to month. Net-so-far was dropped: early in
+// the month it compares partial actuals (no salary yet) to a full forecast and
+// always reads misleadingly negative.
 function monthStrip() {
   const fc = currentForecast();
-  const m0 = (fc.months || [])[0];
-  if (!m0) return "";
+  if (!(fc.months || [])[0]) return "";
   const month = thisMonth();
-  const fnet = m0.net || 0;
+  const budgets = (state.settings && state.settings.forecast_budgets) || {};
+  const budget = Number(budgets["General Expenses"]) || 0;
   const r = reconcileNow();
 
   let big, tag = "", sub;
   if (!r) {
-    // Forecast-only (feed not loaded yet). No misleading "so far" figure.
-    big = `<span class="${fnet < 0 ? "neg" : "pos"}">${signed(fnet)}</span>`;
-    sub = emmaLoading
-      ? `Forecast net · syncing actuals…`
-      : `Forecast net · ${fmtGBP(m0.cash)} projected end of month`;
+    // Feed not loaded — show the budget as context, no misleading actuals.
+    big = budget ? `${fmtGBP(budget)} <span class="of">budget</span>` : "—";
+    sub = emmaLoading ? "Syncing this month's spend…" : "General spending vs budget";
   } else {
-    const inc = r.income.reduce((s, g) => s + (g.actual || 0), 0);
-    const projOut = projectActual(month);
-    const out = r.expense.reduce((s, g) => s + (g.actual || 0), 0) + projOut;
-    const net = inc - out;
-    const over = r.expense.some((g) => g.over);
-    const pending = r.income.some((g) => g.pendingExpected > 0);
-    const tint = over ? "coral" : pending ? "amber" : "mint";
-    const word = over ? "over budget" : pending ? "income to come" : "on track";
-    tag = `<span class="hp-ms-tag ${tint}">${word}</span>`;
-    big = `<span class="${net < 0 ? "neg" : "pos"}">${signed(net)}</span> <span class="of">so far</span>`;
-    sub = `${fmtGBP(inc)} in · ${fmtGBP(out)} out · forecast net ${signed(fnet)}`;
+    const gen = r.expense.find((g) => g.name === "General Expenses");
+    const actual = gen ? gen.actual : 0;
+    const over = !!(gen && gen.over);
+    const top = gen && gen.categories && gen.categories[0];
+    const topTxt = top ? ` · biggest: ${top.name} ${fmtGBP(top.actual)}` : "";
+    big = budget
+      ? `<span class="${over ? "neg" : "pos"}">${fmtGBP(actual)}</span> <span class="of">/ ${fmtGBP(budget)}</span>`
+      : `<span class="pos">${fmtGBP(actual)}</span>`;
+    if (budget) tag = over
+      ? `<span class="hp-ms-tag coral">over</span>`
+      : `<span class="hp-ms-tag mint">within</span>`;
+    sub = !budget ? `discretionary spent${topTxt}`
+      : over ? `${fmtGBP(actual - budget)} over budget${topTxt}`
+      : `${fmtGBP(Math.max(0, budget - actual))} left${topTxt}`;
   }
   return `<div class="glass hp-ms" data-goto="forecast">
     <div class="hp-ms-top">
-      <span class="eyebrow">This month · ${fmtMonth(month)}</span>
+      <span class="eyebrow">This month · ${fmtMonth(month)} · general</span>
       <span class="hp-meta">${tag}<i data-lucide="chevron-right"></i></span>
     </div>
     <div class="hp-ms-big">${big}</div>
@@ -212,9 +205,13 @@ function forecastPillar() {
   let sub;
   if (!ms.length) sub = "Add accounts and flows to see your forecast";
   else if (dip && dip.cash < buffer)
-    sub = `<span class="neg">Dips to ${fmtGBP(dip.cash)}</span> — below buffer in ${fmtMonth(dip.month)}`;
+    sub = `<span class="neg">Dips to ${fmtGBP(dip.cash)}</span> — below your ${fmtGBP(buffer)} buffer in ${fmtMonth(dip.month)}`;
+  else if (now < buffer && dip)
+    // Tight today but the forecast recovers above buffer — explains why the low
+    // point sits ABOVE current cash (upcoming income lands before any dip).
+    sub = `<span class="neg">Below your ${fmtGBP(buffer)} buffer now</span> — income lifts you back above · low ${fmtGBP(dip.cash)} in ${fmtMonth(dip.month)}`;
   else if (dip)
-    sub = `Low point ${fmtGBP(dip.cash)} in ${fmtMonth(dip.month)}`;
+    sub = `Stays above your ${fmtGBP(buffer)} buffer · low ${fmtGBP(dip.cash)} in ${fmtMonth(dip.month)}`;
   else sub = "";
   return pillar("forecast", "Forecast", "cash now", fmtGBP(now), sparkSvg(ms), sub);
 }
@@ -236,25 +233,19 @@ function spendingPillar() {
   const byCat = {};
   for (const t of emmaTxns) {
     if (t.amount >= 0) continue;
-    if (monthOf(t.date) !== ym) continue;
+    if (monthOf(t.dateInt) !== ym) continue;   // dateInt is the yyyymmdd int; t.date is the raw string
     const cat = effectiveCategory(t, rules);
     if (excluded.has(cat)) continue;
     const amt = -t.amount;
     spent += amt;
     byCat[cat] = (byCat[cat] || 0) + amt;
   }
-  const budgets = (state.settings && state.settings.forecast_budgets) || {};
-  const budget = Number(budgets["General Expenses"]) || 0;
   const big = Object.entries(byCat).sort((a, b) => b[1] - a[1])[0];
   const bigTxt = big ? `biggest: ${big[0]} ${fmtGBP(big[1])}` : "nothing counted yet";
-  const bigNum = budget
-    ? `${fmtGBP(spent)} <span class="of">/ ${fmtGBP(budget)}</span>`
-    : fmtGBP(spent);
-  const mid = budget
-    ? `<div class="hp-bar"><i style="width:${Math.min(100, budget ? (spent / budget) * 100 : 0).toFixed(0)}%"></i></div>`
-    : "";
-  const sub = budget ? `${fmtGBP(Math.max(0, budget - spent))} left · ${bigTxt}` : bigTxt;
-  return pillar("spending", "Spending", "this month", bigNum, mid, sub);
+  // Total counting spend this month (bills + discretionary). No budget bar —
+  // discretionary-vs-budget is the "This month" card's job; total spend vs the
+  // General budget would be apples-to-oranges.
+  return pillar("spending", "Spending", "this month", fmtGBP(spent), "", bigTxt);
 }
 
 // ---- Projects pillar -------------------------------------------------------
