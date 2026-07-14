@@ -13,6 +13,7 @@ import { mountMerchants } from "./merchants.js";
 import { mountAnalysis } from "./analysis.js";
 import { mountCategoriesPage } from "./categories-page.js";
 import { mountSettings } from "./settings.js";
+import { publishToLifeOS } from "./lifeos.js";
 import { APP_VERSION, BUILD_DATE } from "./version.js";
 
 console.log(`HouseholdOS Planner v${APP_VERSION} (built ${BUILD_DATE})`);
@@ -189,6 +190,7 @@ async function onSession(session) {
       mountCategoriesPage();
       mountSettings();
       applyRoute();         // land on the hash (defaults to Home)
+      publishToLifeOS();    // fire-and-forget: push headline metrics to the LifeOS hub
     }
   } else {
     gate.style.display = "grid";
