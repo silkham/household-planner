@@ -20,6 +20,10 @@ const shortMonth = (ym) => {
 };
 const signed = (n) => (n < 0 ? "−" : "+") + fmtGBP(Math.abs(n));
 
+// Phone breakpoint — the chart uses a narrower/taller viewBox here so it scales
+// up legibly (see buildChart). Matches the app's 640px mobile breakpoint.
+const isMobile = () => window.matchMedia("(max-width: 640px)").matches;
+
 // Selected chart point (tap-to-show position). Defaults to the current month so
 // its cash/net is visible on load; touch has no hover, so this is tap-driven.
 let selPoint = 0;
@@ -54,7 +58,12 @@ function calloutMarkup(i) {
 function buildChart(fc) {
   const ms = fc.months;
   const n = ms.length;
-  const W = 720, H = 300, padL = 46, padR = 16, padT = 18, padB = 26;
+  // The SVG scales to the container width via a fixed viewBox, so a NARROWER
+  // viewBox on mobile scales UP — a taller plot and larger (more legible) text
+  // on a phone, where the 720-wide desktop viewBox rendered everything tiny.
+  const mob = isMobile();
+  const W = mob ? 380 : 720, H = mob ? 300 : 300;
+  const padL = mob ? 40 : 46, padR = mob ? 12 : 16, padT = 18, padB = 26;
   const plotW = W - padL - padR, plotH = H - padT - padB;
   const bottom = padT + plotH;
 
@@ -85,8 +94,9 @@ function buildChart(fc) {
   const yLabels = yLabel(yMax - span * 0.08) + yLabel(fc.buffer, "buf") +
     (yMin < 0 ? yLabel(0) : "");
 
-  // x-axis labels — thin them out so they never crowd
-  const step = Math.max(1, Math.ceil(n / 6));
+  // x-axis labels — thin them out so they never crowd (fewer on the narrow
+  // mobile viewBox where each label takes proportionally more room)
+  const step = Math.max(1, Math.ceil(n / (mob ? 4 : 6)));
   const xLabels = ms.map((m, i) =>
     (i % step === 0 || i === n - 1)
       ? `<text x="${x(i).toFixed(1)}" y="${H - 7}" text-anchor="middle" class="ax-lbl">${shortMonth(m.month)}</text>`
@@ -524,8 +534,19 @@ function render() {
   window.lucide && lucide.createIcons({ nameAttr: "data-lucide" });
 }
 
+let breakpointBound = false;
 export function mountForecast() {
   subscribe(render);
+  // Re-render when we cross the phone breakpoint so the chart's viewBox swaps
+  // (rotation / window resize). Fires only on the breakpoint change, not every
+  // resize tick — so no thrash and the line draw-on isn't replayed constantly.
+  if (!breakpointBound) {
+    breakpointBound = true;
+    const mql = window.matchMedia("(max-width: 640px)");
+    const onChange = () => render();
+    mql.addEventListener ? mql.addEventListener("change", onChange)
+                         : mql.addListener(onChange);
+  }
   render();
   if (emmaConfigured()) loadReconcile();   // lazy, non-blocking
 }
