@@ -1,24 +1,25 @@
 // ============================================================================
 //  tasks.js — the cross-project line-item roll-up. Every project_items row
-//  across all projects in one checklist, grouped by project. Filters: To do ·
-//  Quoted · Over budget. Editing here writes the same project_items rows the
-//  project detail page shows (one source of truth) via editItem/syncTotals.
-//  V2 (Session 17): no longer a top-level tab — rendered as the "Tasks"
-//  sub-view of the Projects screen via renderTasksInto(root).
+//  across all projects in one checklist, grouped by project. Status is DERIVED
+//  ("To pay" until linked transactions cover the budget, then "Paid") and
+//  actuals come only from links — so this view is read-only summary + a tap
+//  through to the line-item sheet (where you link payments). One source of
+//  truth. Rendered as the "Tasks" sub-view of the Projects screen.
 // ============================================================================
-import { state, saveRow } from "./store.js";
+import { state } from "./store.js";
 import { fmtGBP } from "./sheet.js";
-import { editItem, syncTotals } from "./projects.js";
+import { editItem, itemPaid, sumLinks } from "./projects.js";
 
 const badge = (text, tint) =>
   `<span class="hpill" style="background:color-mix(in srgb, var(--${tint}) 16%, transparent); color:var(--${tint})">${text}</span>`;
-const ITEM_TINT = { todo: "text-faint", quoted: "amber", done: "mint" };
+
+const overBudget = (i) => sumLinks(i.id) > Number(i.estimated_cost) + 0.005;
 
 const FILTERS = [
-  { id: "all",    label: "All",         test: () => true },
-  { id: "todo",   label: "To do",       test: (i) => i.status === "todo" },
-  { id: "quoted", label: "Quoted",      test: (i) => i.status === "quoted" },
-  { id: "over",   label: "Over budget", test: (i) => i.actual_cost != null && Number(i.actual_cost) > Number(i.estimated_cost) },
+  { id: "all",   label: "All",         test: () => true },
+  { id: "topay", label: "To pay",      test: (i) => !itemPaid(i) },
+  { id: "paid",  label: "Paid",        test: (i) => itemPaid(i) },
+  { id: "over",  label: "Over budget", test: overBudget },
 ];
 let filter = "all";
 
@@ -26,29 +27,18 @@ const itemsFor = (pid) =>
   state.project_items.filter((i) => i.project_id === pid)
     .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
 
-// quick inline updates — write the row, then resync the parent project total
-async function patchItem(id, patch, pid) {
-  await saveRow("project_items", { id, ...patch });
-  await syncTotals(pid);
-}
-
 function itemRow(i) {
-  const done = i.status === "done";
-  const over = i.actual_cost != null && Number(i.actual_cost) > Number(i.estimated_cost);
-  const actTxt = i.actual_cost == null ? "" :
-    `<span class="tk-act" style="color:var(--${over ? "coral" : "mint"})">${fmtGBP(i.actual_cost)}${over ? " · over" : ""}</span>`;
-  return `<div class="tk-row ${done ? "done" : ""}" data-item="${i.id}">
-    <button class="tk-tick ${done ? "on" : ""}" data-tick="${i.id}" title="Mark done">
-      <i data-lucide="${done ? "check-circle-2" : "circle"}"></i></button>
-    <div class="tk-main" data-edit="${i.id}">
+  const paid = itemPaid(i);
+  const links = sumLinks(i.id);
+  const over = overBudget(i);
+  const actTxt = links > 0 ?
+    `<span class="tk-act" style="color:var(--${over ? "coral" : "mint"})">${fmtGBP(links)}${over ? " · over" : ""}</span>` : "";
+  return `<div class="tk-row ${paid ? "done" : ""}" data-edit="${i.id}">
+    <div class="tk-main">
       <span class="tk-name">${i.name}</span>
-      <span class="tk-sub">${badge(i.status, ITEM_TINT[i.status] || "text-faint")}${actTxt}</span>
+      <span class="tk-sub">${badge(paid ? "Paid" : "To pay", paid ? "mint" : "text-faint")}${actTxt}</span>
     </div>
-    <div class="tk-nums">
-      <span class="tk-est">${fmtGBP(i.estimated_cost)}</span>
-      <input class="field tk-actin" type="number" inputmode="decimal" step="50"
-        placeholder="actual" data-actual="${i.id}" value="${i.actual_cost == null ? "" : i.actual_cost}">
-    </div>
+    <div class="tk-nums"><span class="tk-est">${fmtGBP(i.estimated_cost)}</span></div>
   </div>`;
 }
 
@@ -81,20 +71,12 @@ function render() {
         : "Nothing matches this filter."}</div>`;
 
   root.innerHTML = `
-    <p class="sec-sub" style="margin:0 0 10px">Every project line item in one list. Tick to mark done, or type an actual to log spend.</p>
+    <p class="sec-sub" style="margin:0 0 10px">Every project line item in one list. Tap one to link the payments that mark it paid.</p>
     ${filterCtrl}
     ${body}`;
 
   root.querySelectorAll("[data-filter]").forEach((b) =>
     b.onclick = () => { filter = b.dataset.filter; render(); });
-
-  root.querySelectorAll("[data-tick]").forEach((b) =>
-    b.onclick = async (e) => {
-      e.stopPropagation();
-      const it = state.project_items.find((x) => x.id === b.dataset.tick);
-      if (!it) return;
-      await patchItem(it.id, { status: it.status === "done" ? "todo" : "done" }, it.project_id);
-    });
 
   root.querySelectorAll("[data-edit]").forEach((m) =>
     m.onclick = () => {
@@ -102,16 +84,6 @@ function render() {
       const p = it && state.projects.find((x) => x.id === it.project_id);
       if (it && p) editItem(p, it);
     });
-
-  root.querySelectorAll("[data-actual]").forEach((inp) => {
-    inp.onclick = (e) => e.stopPropagation();
-    inp.onchange = async () => {
-      const it = state.project_items.find((x) => x.id === inp.dataset.actual);
-      if (!it) return;
-      const val = inp.value === "" ? null : Number(inp.value);
-      await patchItem(it.id, { actual_cost: val }, it.project_id);
-    };
-  });
 
   window.lucide && lucide.createIcons({ nameAttr: "data-lucide" });
 }

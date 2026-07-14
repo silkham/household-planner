@@ -37,11 +37,19 @@ eq(confidencePasses("speculative", "realistic"), false, "realistic drops specula
 eq(confidencePasses("speculative", "optimistic"), true, "optimistic keeps all");
 
 // ---- projectCostInMonth ----------------------------------------------------
-const proj = { estimated_cost: 900, duration_months: 3, target_start_month: "2026-01", status: "Planned" };
-approx(projectCostInMonth(proj, monthIndex("2026-01")), 300, "even split month 1");
-approx(projectCostInMonth(proj, monthIndex("2026-03")), 300, "even split last month");
-eq(projectCostInMonth(proj, monthIndex("2026-04")), 0, "outside window → 0");
-const projSpread = { estimated_cost: 900, duration_months: 3, target_start_month: "2026-01", cost_spread: { "2026-01": 800, "2026-02": 100 } };
+// No duration/even-split any more. A project with no cost_spread spikes its whole
+// cost in the start month; a cost_spread (derived from line-item due months) is
+// authoritative. `proj` uses a spread so the actual-shrink cases stay multi-month.
+const proj = { estimated_cost: 900, target_start_month: "2026-01",
+               cost_spread: { "2026-01": 300, "2026-02": 300, "2026-03": 300 } };
+approx(projectCostInMonth(proj, monthIndex("2026-01")), 300, "spread month 1");
+approx(projectCostInMonth(proj, monthIndex("2026-03")), 300, "spread last month");
+eq(projectCostInMonth(proj, monthIndex("2026-04")), 0, "outside spread → 0");
+// no spread → whole cost spikes in the start month
+const projSpike = { estimated_cost: 900, target_start_month: "2026-01" };
+approx(projectCostInMonth(projSpike, monthIndex("2026-01")), 900, "no spread → whole cost in start month");
+eq(projectCostInMonth(projSpike, monthIndex("2026-02")), 0, "no spread → 0 outside start month");
+const projSpread = { estimated_cost: 900, target_start_month: "2026-01", cost_spread: { "2026-01": 800, "2026-02": 100 } };
 approx(projectCostInMonth(projSpread, monthIndex("2026-01")), 800, "cost_spread override");
 approx(projectCostInMonth(projSpread, monthIndex("2026-02")), 100, "cost_spread override 2");
 eq(projectCostInMonth(projSpread, monthIndex("2026-03")), 0, "cost_spread month absent → 0");
@@ -98,14 +106,16 @@ approx(f1.months[0].cash, 6500, "month0 cash");
 approx(f1.months[2].cash, 9500, "month2 cash accumulates");
 
 // ---- project spend feeds expenses ------------------------------------------
-const withProj = { ...base, projects: [{ id: "p", name: "Shed", estimated_cost: 900, duration_months: 3, target_start_month: "2026-01", status: "Planned" }] };
+// Spread (as currentForecast would derive from 3 line items) → £300 in month0.
+const withProj = { ...base, projects: [{ id: "p", name: "Shed", estimated_cost: 900,
+  target_start_month: "2026-01", cost_spread: { "2026-01": 300, "2026-02": 300, "2026-03": 300 } }] };
 const f2 = computeForecast(withProj);
 approx(f2.months[0].project_spend, 300, "project_spend surfaced");
 approx(f2.months[0].expenses, 800, "project folds into expenses");
 approx(f2.months[0].net, 1200, "net reflects project spend");
-// Idea/On Hold/Done excluded
-const idle = computeForecast({ ...base, projects: [{ id: "p", name: "X", estimated_cost: 900, duration_months: 3, target_start_month: "2026-01", status: "Idea" }] });
-eq(idle.months[0].project_spend, 0, "Idea status excluded from spend");
+// Status is gone — every project counts (fully-paid ones shrink to £0 on their own).
+const noStatus = computeForecast({ ...base, projects: [{ id: "p", name: "X", estimated_cost: 900, target_start_month: "2026-01" }] });
+approx(noStatus.months[0].project_spend, 900, "no status filter — whole cost spikes at start");
 
 // ---- life events: SIGN CONVENTION (− = worse) ------------------------------
 // nursery: expense_change, monthly_impact −300 → expenses +300, net −300
@@ -194,7 +204,7 @@ eq(fin("considering").months[0].expenses, 0, "considering loan does not pay");
 const spike = computeForecast({
   settings: { horizon_months: 2, cash_buffer: 0 }, startMonth: "2026-01",
   accounts: [{ balance: 20000, available_for_projects: true }],
-  projects: [{ id: "k", name: "Kitchen", estimated_cost: 10000, duration_months: 1, target_start_month: "2026-01", status: "Quoted" }],
+  projects: [{ id: "k", name: "Kitchen", estimated_cost: 10000, target_start_month: "2026-01" }],
 });
 has(spike.months[0].flags, "project_spike", "project_spike when start-month drop > 50% of cost");
 
@@ -203,17 +213,17 @@ const affForecast = computeForecast({
   settings: { horizon_months: 3, cash_buffer: 2000 }, startMonth: "2026-01",
   accounts: [{ balance: 3000, available_for_projects: true }],
   recurring_flows: [{ id: "e", kind: "expense", amount: 1000, start_month: "2026-01" }],
-  projects: [{ id: "a", name: "A", estimated_cost: 3000, duration_months: 1, target_start_month: "2026-03", status: "Planned" }],
+  projects: [{ id: "a", name: "A", estimated_cost: 3000, target_start_month: "2026-03" }],
 });
 // cash: m0 2000(buffer), m1 1000(below), m2 1000−3000=−2000(neg). Project active m2 → red.
-eq(projectAffordability({ id: "a", name: "A", estimated_cost: 3000, duration_months: 1, target_start_month: "2026-03", status: "Planned" }, affForecast), "red", "affordability red when active month negative");
+eq(projectAffordability({ id: "a", name: "A", estimated_cost: 3000, target_start_month: "2026-03" }, affForecast), "red", "affordability red when active month negative");
 // a cheap project active only in a healthy month → green
 const green = computeForecast({
   settings: { horizon_months: 3, cash_buffer: 500 }, startMonth: "2026-01",
   accounts: [{ balance: 5000, available_for_projects: true }],
-  projects: [{ id: "g", name: "G", estimated_cost: 100, duration_months: 1, target_start_month: "2026-01", status: "Planned" }],
+  projects: [{ id: "g", name: "G", estimated_cost: 100, target_start_month: "2026-01" }],
 });
-eq(projectAffordability({ id: "g", name: "G", estimated_cost: 100, duration_months: 1, target_start_month: "2026-01", status: "Planned" }, green), "green", "affordability green when comfortable");
+eq(projectAffordability({ id: "g", name: "G", estimated_cost: 100, target_start_month: "2026-01" }, green), "green", "affordability green when comfortable");
 
 // ---- General Expenses budget is a flat monthly forecast expense ------------
 const gb = computeForecast({

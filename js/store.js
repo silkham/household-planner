@@ -161,10 +161,22 @@ export async function saveSettings(patch) {
 export function currentForecast() {
   const projects = state.projects.map((p) => {
     const items = state.project_items.filter((i) => i.project_id === p.id);
-    if (!items.length) return p;
+    if (!items.length) return p;   // no items → engine spikes the whole cost at start
     const est = items.reduce((s, i) => s + (Number(i.estimated_cost) || 0), 0);
     const act = items.reduce((s, i) => s + (i.actual_cost == null ? 0 : Number(i.actual_cost)), 0);
-    return { ...p, estimated_cost: est, actual_cost: act };
+    // Spend timing comes from the line items: each item's estimated_cost lands in
+    // its `due_month` (fallback: the project's start month). This synthesised
+    // cost_spread is what the engine reads — it never touches project_items.
+    const spread = {};
+    for (const it of items) {
+      const m = it.due_month || p.target_start_month;
+      if (!m) continue;
+      spread[m] = (spread[m] || 0) + (Number(it.estimated_cost) || 0);
+    }
+    return {
+      ...p, estimated_cost: est, actual_cost: act,
+      cost_spread: Object.keys(spread).length ? spread : p.cost_spread,
+    };
   });
   return computeForecast({
     accounts: state.accounts, recurring_flows: state.recurring_flows,

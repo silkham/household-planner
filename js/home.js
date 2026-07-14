@@ -134,8 +134,11 @@ function spendingPillar() {
 
 // ---- Projects pillar -------------------------------------------------------
 function projectsPillar() {
-  const active = state.projects.filter((p) =>
-    ["Planned", "Quoted", "In Progress"].includes(p.status));
+  // active = still has money left to spend (there's no project status now).
+  const active = state.projects.filter((p) => {
+    const d = derived(p);
+    return d.est - d.act > 0.005;
+  });
   if (!active.length)
     return pillar("projects", "Projects", "none active", "—", "", "Add a project to start planning");
   let committed = 0, spent = 0;

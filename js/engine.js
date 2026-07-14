@@ -106,11 +106,12 @@ export function effectiveAmount(flow, mIdx, salaryChanges, scenario) {
 }
 
 // ---- project spend ---------------------------------------------------------
-const PROJECT_ACTIVE_STATUSES = new Set(["Planned", "Quoted", "In Progress"]);
-
-// planned_cost_in_month: if a cost_spread override exists it is AUTHORITATIVE
-// (months absent from it contribute 0 — no even-split fallthrough, or the total
-// would exceed estimated_cost). Otherwise split evenly over the duration.
+// planned_cost_in_month: spend timing comes from a `cost_spread` — a month→£ map
+// that currentForecast() derives from each line item's `due_month` (an item with
+// no due month falls to the project's start month). The spread is AUTHORITATIVE:
+// months absent from it contribute 0. A project with NO line items has no spread,
+// so its whole estimated_cost lands as a single spike in its start month.
+// (Duration + even-split are gone — line items drive the schedule now.)
 export function plannedCostInMonth(p, mIdx) {
   const spread = p.cost_spread;
   if (spread && typeof spread === "object" && Object.keys(spread).length) {
@@ -118,11 +119,7 @@ export function plannedCostInMonth(p, mIdx) {
   }
   const startIdx = monthIndex(p.target_start_month);
   if (startIdx == null) return 0;
-  const dur = Math.max(1, Number(p.duration_months) || 1);
-  if (mIdx >= startIdx && mIdx < startIdx + dur) {
-    return (Number(p.estimated_cost) || 0) / dur;
-  }
-  return 0;
+  return mIdx === startIdx ? (Number(p.estimated_cost) || 0) : 0;
 }
 
 // project_cost_in_month: what the forecast still expects to spend in month M.
@@ -288,7 +285,8 @@ export function computeForecast(input) {
     }
     let projectSpend = 0;
     for (const p of projects) {
-      if (!PROJECT_ACTIVE_STATUSES.has(p.status)) continue;
+      // No status filter — a project stays in the forecast for its REMAINING
+      // cost (est − actual); once fully paid via linked txns it shrinks to £0.
       const amt = projectCostInMonth(p, mIdx);
       if (amt) {
         projectSpend += amt;
@@ -307,7 +305,7 @@ export function computeForecast(input) {
     if (cash < 0) flags.push("negative");
     if (cash < buffer) flags.push("below_buffer");
     for (const p of projects) {
-      if (PROJECT_ACTIVE_STATUSES.has(p.status) && monthIndex(p.target_start_month) === mIdx) {
+      if (monthIndex(p.target_start_month) === mIdx) {
         if (cash - prevCash < -0.5 * (Number(p.estimated_cost) || 0)) {
           flags.push("project_spike");
           break;
@@ -326,11 +324,13 @@ export function computeForecast(input) {
 // the project's active months, amber if it dips below buffer, else green.
 export function projectAffordability(project, forecast) {
   const start = monthIndex(project.target_start_month);
-  if (start == null || !PROJECT_ACTIVE_STATUSES.has(project.status)) return "none";
-  const dur = Math.max(1, Number(project.duration_months) || 1);
-  const spreadKeys = project.cost_spread ? Object.keys(project.cost_spread).map(monthIndex) : [];
-  const inActive = (mIdx) =>
-    (mIdx >= start && mIdx < start + dur) || spreadKeys.includes(mIdx);
+  // Active months = the months the project actually draws money: its cost_spread
+  // keys (derived from line-item due months), else just its start month.
+  const spreadKeys = project.cost_spread && Object.keys(project.cost_spread).length
+    ? Object.keys(project.cost_spread).map(monthIndex)
+    : (start != null ? [start] : []);
+  if (!spreadKeys.length) return "none";
+  const inActive = (mIdx) => spreadKeys.includes(mIdx);
 
   let worst = "green";
   for (const m of forecast.months) {

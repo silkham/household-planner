@@ -1,26 +1,18 @@
 // ============================================================================
-//  projects.js — the Projects tab. Cards sorted by priority/date/cost/status,
-//  each with an affordability tick from the live forecast. The detail sheet
-//  carries line items (sum→total), the budget lock, actuals/variance and a
-//  per-month cost-spread override.
+//  projects.js — the Projects tab. Cards with an affordability tick from the
+//  live forecast. The detail sheet carries line items (sum→total), the budget
+//  lock, and actuals/variance. Projects have no status/priority/category/
+//  duration any more — spend timing comes from each line item's due month, and
+//  a project stays in the forecast for its REMAINING cost until it's fully paid
+//  (actuals come only from linked transactions).
 // ============================================================================
 import { state, subscribe, saveRow, currentForecast, linkProjectTxn, unlinkProjectTxn } from "./store.js";
 import { openSheet, fmtGBP, fmtMonth } from "./sheet.js";
-import { projectAffordability, monthIndex, fromIndex } from "./engine.js";
+import { projectAffordability } from "./engine.js";
 import { fetchEmma, cachedEmmaTxns } from "./emma.js";
 import { txnKey, synthKey } from "./categories.js";
 import { renderTasksInto } from "./tasks.js";
 
-const opt = (arr) => arr.map((v) => ({ label: v, value: v }));
-const CATEGORIES = opt(["Structural", "Cosmetic", "Repair", "Garden", "Energy", "Furniture"]);
-const STATUSES = opt(["Idea", "Planned", "Quoted", "In Progress", "On Hold", "Done"]);
-const ITEM_STATUS = opt(["todo", "quoted", "done"]);
-const RATING = [1, 2, 3, 4, 5].map((n) => ({ label: String(n), value: n }));
-
-const STATUS_TINT = {
-  Idea: "text-faint", Planned: "blue", Quoted: "amber",
-  "In Progress": "mint", "On Hold": "violet", Done: "text-faint",
-};
 const AFFORD = {
   green: { icon: "check-circle-2", tint: "mint", label: "Fits the forecast" },
   amber: { icon: "alert-triangle", tint: "amber", label: "Pushes below buffer" },
@@ -34,7 +26,7 @@ export const badge = (text, tint) =>
 
 // Shared maps/helpers below are exported so the routed project-detail page
 // (js/project-detail.js) re-presents the same data without duplicating logic.
-export { AFFORD, STATUS_TINT, BUDGET_TINT };
+export { AFFORD, BUDGET_TINT };
 
 // ---- derived totals from line items ----------------------------------------
 export const itemsFor = (pid) =>
@@ -83,9 +75,15 @@ export const projectCost = (p) => {
   return its.length ? sumEst(its) : (Number(p.estimated_cost) || 0);
 };
 
-// ---- priority: a single manually-set 1–5 field -----------------------------
-// (Replaced the derived impact/urgency/effort × weights score in Session 4.)
-export const priorityOf = (p) => Number(p.priority) || 3;
+// ---- line-item status is DERIVED, not stored -------------------------------
+// Two states only: "Paid" once linked transactions cover the item's budget,
+// else "To pay". (Actuals come solely from linked txns, so there's no manual
+// status field any more.)
+export const itemPaid = (item) => {
+  const est = Number(item.estimated_cost) || 0;
+  const paid = sumLinks(item.id);
+  return est > 0 ? paid >= est - 0.005 : paid > 0;
+};
 
 // keep the stored project total in sync with its line items (engine reads it)
 export async function syncTotals(pid) {
@@ -108,11 +106,8 @@ function projectFields(p) {
   const noItems = itemsFor(p.id).length === 0;
   const f = [
     { key: "name", label: "Name", type: "text", placeholder: "Kitchen reno" },
-    { key: "category", label: "Category", type: "select", options: CATEGORIES },
-    { key: "status", label: "Status", type: "select", options: STATUSES },
-    { key: "priority", label: "Priority (1 = low, 5 = must-do)", type: "segmented", options: RATING },
-    { key: "target_start_month", label: "Target start", type: "month" },
-    { key: "duration_months", label: "Duration (months)", type: "number", min: 1, step: "1" },
+    { key: "target_start_month", label: "Target start", type: "month",
+      help: "When spend begins. Line items with their own due month override this." },
   ];
   // manual cost only when there are no line items (else it's the derived sum)
   if (noItems) f.push({ key: "estimated_cost", label: "Estimated cost £", type: "money", step: "100" });
@@ -125,8 +120,7 @@ function projectFields(p) {
 export function editProject(record, opts = {}) {
   const isNew = !record.id;
   const p = isNew
-    ? { name: "", category: "Structural", status: "Planned", priority: 3,
-        estimated_cost: 0, target_start_month: null, duration_months: 1, budget_status: "estimate", notes: null }
+    ? { name: "", estimated_cost: 0, target_start_month: null, budget_status: "estimate", notes: null }
     : record;
   const showExtra = !isNew && !opts.fieldsOnly;
 
@@ -137,8 +131,7 @@ export function editProject(record, opts = {}) {
     record: p,
     impact: (d) => {
       const cost = itemsFor(p.id).length ? projectCost(p) : (Number(d.estimated_cost) || 0);
-      const dur = Math.max(1, Number(d.duration_months) || 1);
-      return `${fmtGBP(cost)} over ${dur} mo (${fmtGBP(cost / dur)}/mo) from ${fmtMonth(d.target_start_month)}`;
+      return `${fmtGBP(cost)}${d.target_start_month ? " from " + fmtMonth(d.target_start_month) : ""}`;
     },
     extra: showExtra ? (box) => renderDetailExtra(box, p) : null,
     onDone: opts.onDone || render,
@@ -156,26 +149,28 @@ export function renderDetailExtra(box, p) {
 
     // --- line items ---
     let itemsHtml = items.map((i) => {
-      const over = i.actual_cost != null && Number(i.actual_cost) > Number(i.estimated_cost);
-      const actTxt = i.actual_cost == null ? "" :
-        `<span class="li-act" style="color:var(--${over ? "coral" : "mint"})">${fmtGBP(i.actual_cost)}</span>`;
+      const paid = itemPaid(i);
+      const links = sumLinks(i.id);
+      const over = links > 0 && links > Number(i.estimated_cost);
+      const actTxt = links > 0 ?
+        `<span class="li-act" style="color:var(--${over ? "coral" : "mint"})">${fmtGBP(links)}</span>` : "";
       return `<div class="li" data-item="${i.id}">
         <div class="li-main"><span class="li-name">${i.name}</span>
-          <span class="li-sub">${badge(i.status, i.status === "done" ? "mint" : i.status === "quoted" ? "amber" : "text-faint")}</span></div>
+          <span class="li-sub">${badge(paid ? "Paid" : "To pay", paid ? "mint" : "text-faint")}</span></div>
         <div class="li-nums"><span class="li-est">${fmtGBP(i.estimated_cost)}</span>${actTxt}</div>
       </div>`;
     }).join("");
     if (!items.length) itemsHtml = `<div class="sec-empty" style="margin:0">No line items. This project uses a single cost number. Add items to build the total up.</div>`;
 
     // --- budget lock ---
-    const everyQuoted = items.length > 0 && items.every((i) => i.status === "quoted" || i.status === "done");
+    const everyBudgeted = items.length > 0 && items.every((i) => Number(i.estimated_cost) > 0);
     const locked = ["budgeted", "tracking", "closed"].includes(p.budget_status);
     let budgetBtn = "";
     if (items.length) {
       budgetBtn = locked
         ? `<button class="pi-btn locked" data-unlock><i data-lucide="lock"></i> Budget ${p.budget_status}</button>`
-        : `<button class="pi-btn" data-lock ${everyQuoted ? "" : "disabled"}>
-             <i data-lucide="lock-open"></i> Confirm budget${everyQuoted ? "" : " (quote every line first)"}</button>`;
+        : `<button class="pi-btn" data-lock ${everyBudgeted ? "" : "disabled"}>
+             <i data-lucide="lock-open"></i> Confirm budget${everyBudgeted ? "" : " (add a cost to every line first)"}</button>`;
     }
 
     // --- variance ---
@@ -197,8 +192,7 @@ export function renderDetailExtra(box, p) {
       <div class="li-list">${itemsHtml}</div>
       <button class="pi-add" data-additem><i data-lucide="plus"></i> Add line item</button>
       ${budgetBtn}
-      ${variance}
-      ${renderSpread(p)}`;
+      ${variance}`;
 
     // wire
     box.querySelector("[data-additem]").onclick = () => editItem(p, {}, rebuild);
@@ -217,54 +211,23 @@ export function renderDetailExtra(box, p) {
       await saveRow("projects", { id: p.id, budget_status: "estimate" });
       p.budget_status = "estimate"; rebuild();
     };
-    wireSpread(box, p, rebuild);
     window.lucide && lucide.createIcons({ nameAttr: "data-lucide" });
   };
   rebuild();
 }
 
-// ---- cost-spread override (per active month) -------------------------------
+// ---- active months = when the project actually draws money -----------------
+// Spend timing now comes from line items: each item's due month (falling back to
+// the project's start month), else — with no items — just the start month.
+// Exported for the detail page's "across the build" track.
 export function activeMonths(p) {
-  const start = monthIndex(p.target_start_month);
-  if (start == null) return [];
-  const dur = Math.max(1, Number(p.duration_months) || 1);
-  return Array.from({ length: dur }, (_, k) => fromIndex(start + k));
-}
-function renderSpread(p) {
-  const months = activeMonths(p);
-  if (!months.length) return "";
-  const cost = projectCost(p);
-  const even = cost / months.length;
-  const spread = p.cost_spread || {};
-  const rows = months.map((m) => {
-    const val = m in spread ? spread[m] : even;
-    return `<label class="sp-row"><span>${fmtMonth(m)}</span>
-      <input class="field sp-in" type="number" inputmode="decimal" step="100" data-month="${m}" value="${Math.round(val)}"></label>`;
-  }).join("");
-  return `<div class="pi-head" style="margin-top:16px"><span class="eyebrow">Cost spread</span>
-      <span class="pi-total">${p.cost_spread ? "custom" : "even split"}</span></div>
-    <p class="fld-help" style="margin:2px 0 8px">Override how the ${fmtGBP(cost)} lands month by month. Leave as-is for an even split.</p>
-    <div class="sp-list">${rows}</div>`;
-}
-function wireSpread(box, p, rebuild) {
-  const ins = [...box.querySelectorAll(".sp-in")];
-  if (!ins.length) return;
-  const commit = async () => {
-    const months = activeMonths(p);
-    const cost = projectCost(p);
-    const even = cost / months.length;
-    const spread = {};
-    let custom = false;
-    ins.forEach((inp) => {
-      const v = Number(inp.value) || 0;
-      spread[inp.dataset.month] = v;
-      if (Math.abs(v - even) > 0.5) custom = true;
-    });
-    const next = custom ? spread : null; // all-even → clear the override
-    await saveRow("projects", { id: p.id, cost_spread: next });
-    p.cost_spread = next; rebuild();
-  };
-  ins.forEach((inp) => { inp.onchange = commit; });
+  const months = new Set();
+  for (const i of itemsFor(p.id)) {
+    const m = i.due_month || p.target_start_month;
+    if (m) months.add(m);
+  }
+  if (!months.size && p.target_start_month) months.add(p.target_start_month);
+  return [...months].sort();
 }
 
 // ---- line item child sheet -------------------------------------------------
@@ -275,24 +238,18 @@ export function editItem(project, record, onDone) {
   const nextOrder = itemsFor(project.id).length;
   const rec = isNew
     ? { project_id: project.id, name: "", estimated_cost: 0, actual_cost: null,
-        status: "todo", sort_order: nextOrder, notes: null }
+        sort_order: nextOrder, notes: null, due_month: null }
     : record;
-  // When an item has linked transactions, its actual_cost is DERIVED from them
-  // (read-only, like a project's estimated_cost once it has line items). Only
-  // offer the manual field when there are no links.
-  const linked = isNew ? false : linksFor(rec.id).length > 0;
-
+  // Actuals come ONLY from linked transactions (the section below) — no manual
+  // actual field. The item's status ("To pay"/"Paid") is derived from whether
+  // those links cover its budget, so there's no status field either.
   const fields = [
     { key: "name", label: "Name", type: "text", placeholder: "Units & worktops" },
     { key: "estimated_cost", label: "Budget £", type: "money", step: "100" },
-  ];
-  if (!linked)
-    fields.push({ key: "actual_cost", label: "Actual £ (blank = not spent)", type: "money", step: "50", emptyNull: true });
-  fields.push(
-    { key: "status", label: "Status", type: "segmented", options: ITEM_STATUS },
-    { key: "due_month", label: "Due (for the timeline)", type: "month" },
+    { key: "due_month", label: "Due month", type: "month",
+      help: "When this line is planned to be paid — drives the forecast timing." },
     { key: "notes", label: "Notes", type: "textarea" },
-  );
+  ];
 
   openSheet({
     title: isNew ? "New line item" : "Line item",
@@ -407,24 +364,18 @@ function renderLinks(box, project, item) {
 // ============================================================================
 //  Card list
 // ============================================================================
-let sortMode = "priority";
+let sortMode = "date";
 const SORTS = [
-  { id: "priority", label: "Priority" }, { id: "date", label: "Date" },
-  { id: "cost", label: "Cost" }, { id: "status", label: "Status" },
+  { id: "date", label: "Date" }, { id: "cost", label: "Cost" },
 ];
 
-function durationBar(p) {
-  const dur = Math.max(1, Number(p.duration_months) || 1);
-  const cells = Array.from({ length: Math.min(dur, 8) }, () => `<span></span>`).join("");
-  return `<div class="dur-bar" title="${dur} month${dur > 1 ? "s" : ""}">${cells}</div>`;
-}
-
-// active = the statuses the engine actually draws into the forecast.
-const isActive = (p) => ["Planned", "Quoted", "In Progress"].includes(p.status);
 const spentOf = (p) => {
   const its = itemsFor(p.id);
   return its.length ? sumAct(its) : (Number(p.actual_cost) || 0);
 };
+// active = still has money left to spend (there's no status any more; a fully
+// paid project has £0 remaining and drops out of the forecast on its own).
+const isActive = (p) => (projectCost(p) - spentOf(p)) > 0.005;
 
 // Top-of-tab dashboard: committed vs spent across active projects + whether
 // the spendable cash on hand covers what's still outstanding.
@@ -458,7 +409,6 @@ function projectsDashboard() {
 }
 
 function projectCard(p, forecast) {
-  const score = priorityOf(p);
   const cost = projectCost(p);
   const aff = AFFORD[projectAffordability({ ...p, estimated_cost: cost }, forecast)];
   const itemCount = itemsFor(p.id).length;
@@ -470,14 +420,12 @@ function projectCard(p, forecast) {
   const progress = act > 0
     ? `<div class="pc-prog"><div class="pc-progbar"><i style="width:${pct.toFixed(0)}%; background:var(--${over ? "coral" : "mint"})"></i></div>
         <span class="pc-progtxt">${fmtGBP(act)} spent</span></div>`
-    : durationBar(p);
+    : "";
   return `<div class="fcard pcard" data-id="${p.id}">
     <div class="pc-tick" title="${aff.label}"><i data-lucide="${aff.icon}" style="color:var(--${aff.tint})"></i></div>
     <div class="fc-main">
-      <div class="pc-top"><span class="fc-name">${p.name}</span>
-        <span class="pc-score" title="Priority (1–5)">P${score}</span></div>
-      <div class="fc-sub">${badge(p.status, STATUS_TINT[p.status] || "blue")}
-        ${p.category ? badge(p.category, "blue") : ""} ${budget}
+      <div class="pc-top"><span class="fc-name">${p.name}</span></div>
+      <div class="fc-sub">${budget}
         <span class="fc-dim">${fmtMonth(p.target_start_month)}</span>
         ${itemCount ? `<span class="fc-dim">· ${itemCount} item${itemCount > 1 ? "s" : ""}</span>` : ""}</div>
       ${progress}
@@ -488,11 +436,9 @@ function projectCard(p, forecast) {
 
 function sortProjects(list) {
   const arr = [...list];
-  if (sortMode === "priority") arr.sort((a, b) => priorityOf(b) - priorityOf(a));
-  else if (sortMode === "cost") arr.sort((a, b) => projectCost(b) - projectCost(a));
-  else if (sortMode === "date") arr.sort((a, b) =>
+  if (sortMode === "cost") arr.sort((a, b) => projectCost(b) - projectCost(a));
+  else arr.sort((a, b) =>  // date
     (a.target_start_month || "9999") < (b.target_start_month || "9999") ? -1 : 1);
-  else if (sortMode === "status") arr.sort((a, b) => (a.status || "").localeCompare(b.status || ""));
   return arr;
 }
 

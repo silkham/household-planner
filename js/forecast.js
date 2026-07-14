@@ -344,7 +344,6 @@ function groupRow(g) {
 // Each project is a line (paid/due + expandable to the payments that landed);
 // the group carries the progress bar. Rendered via groupRow so it matches the
 // recurring / General groups exactly.
-const PROJECT_ACTIVE = new Set(["Planned", "Quoted", "In Progress"]);
 // Emma date "M/D/YYYY" → 'YYYY-MM'
 function usMonth(s) {
   const p = String(s || "").split("/");
@@ -355,6 +354,17 @@ const projEst = (p) => {
   const its = state.project_items.filter((i) => i.project_id === p.id);
   return its.length ? its.reduce((s, i) => s + (Number(i.estimated_cost) || 0), 0)
                     : (Number(p.estimated_cost) || 0);
+};
+// Same item-due-month → £ spread the engine reads (see store.currentForecast).
+const projSpread = (p) => {
+  const its = state.project_items.filter((i) => i.project_id === p.id);
+  if (!its.length) return p.cost_spread || null;
+  const s = {};
+  for (const it of its) {
+    const m = it.due_month || p.target_start_month;
+    if (m) s[m] = (s[m] || 0) + (Number(it.estimated_cost) || 0);
+  }
+  return Object.keys(s).length ? s : (p.cost_spread || null);
 };
 const round2 = (n) => Math.round(n * 100) / 100;
 
@@ -376,8 +386,10 @@ function projectGroup() {
 
   const lines = [];
   for (const p of state.projects) {
-    const expected = PROJECT_ACTIVE.has(p.status)
-      ? plannedCostInMonth({ ...p, estimated_cost: projEst(p) }, mIdx) : 0;
+    // No status filter — timing comes from line-item due months (the derived
+    // spread), matching the engine; a fully-paid project just plans £0.
+    const expected = plannedCostInMonth(
+      { ...p, estimated_cost: projEst(p), cost_spread: projSpread(p) }, mIdx);
     const hit = hitByProj.get(p.id) || { amount: 0, txns: [] };
     if (expected < 0.5 && hit.amount < 0.5) continue;   // nothing planned or spent
     lines.push({ id: p.id, name: p.name, expected: round2(expected),

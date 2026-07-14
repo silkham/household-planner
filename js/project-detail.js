@@ -10,8 +10,8 @@ import { state, subscribe, currentForecast } from "./store.js";
 import { fmtGBP, fmtMonth } from "./sheet.js";
 import { projectAffordability, plannedCostInMonth, monthIndex } from "./engine.js";
 import {
-  itemsFor, sumEst, sumAct, projectCost, priorityOf, activeMonths,
-  AFFORD, STATUS_TINT, BUDGET_TINT, badge, editProject, renderDetailExtra,
+  itemsFor, sumEst, sumAct, projectCost, activeMonths,
+  AFFORD, BUDGET_TINT, badge, editProject, renderDetailExtra,
 } from "./projects.js";
 
 let currentId = null;
@@ -33,17 +33,15 @@ function figures(p) {
 
 // ---- header ----------------------------------------------------------------
 function headerHtml(p) {
-  const status = badge(p.status, STATUS_TINT[p.status] || "blue");
-  const dur = Math.max(1, Number(p.duration_months) || 1);
   const budget = p.budget_status && p.budget_status !== "estimate"
     ? badge(p.budget_status, BUDGET_TINT[p.budget_status]) : "";
   return `<div class="pd-top">
     <button class="pd-back" data-back title="Back to projects"><i data-lucide="arrow-left"></i></button>
     <div class="pd-title">
-      <div class="eyebrow">${p.category || "Project"} · P${priorityOf(p)}</div>
+      <div class="eyebrow">Project</div>
       <h1 class="pd-name">${p.name || "Untitled project"}</h1>
-      <div class="pd-meta">${status} ${budget}
-        <span class="fc-dim">${fmtMonth(p.target_start_month)} · ${dur} mo</span></div>
+      <div class="pd-meta">${budget}
+        <span class="fc-dim">${p.target_start_month ? "from " + fmtMonth(p.target_start_month) : "no start month"}</span></div>
     </div>
     <button class="pd-edit" data-editproj title="Edit project"><i data-lucide="pencil"></i></button>
   </div>`;
