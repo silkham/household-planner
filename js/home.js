@@ -193,27 +193,24 @@ function sparkSvg(ms) {
     <circle cx="${px(mi).toFixed(1)}" cy="${py(min).toFixed(1)}" r="3.5" fill="var(--coral)"/></svg>`;
 }
 
+// The Forecast tile answers one question: over the horizon, does cash dip below
+// the safety buffer, and when? So it LEADS with the low point (not today's cash,
+// which isn't the forecast) + a buffer verdict. Taps through to the full chart.
 function forecastPillar() {
   const fc = currentForecast();
   const ms = fc.months || [];
-  const now = state.accounts
-    .filter((a) => a.available_for_projects)
-    .reduce((s, a) => s + (Number(a.balance) || 0), 0);
-  let dip = null;
-  for (const m of ms) if (dip === null || m.cash < dip.cash) dip = m;
+  if (!ms.length)
+    return pillar("forecast", "Forecast", "outlook", "—", "",
+      "Add accounts and flows to see your forecast");
+  let dip = ms[0];
+  for (const m of ms) if (m.cash < dip.cash) dip = m;
   const buffer = Number(fc.buffer) || 0;
-  let sub;
-  if (!ms.length) sub = "Add accounts and flows to see your forecast";
-  else if (dip && dip.cash < buffer)
-    sub = `<span class="neg">Dips to ${fmtGBP(dip.cash)}</span> — below your ${fmtGBP(buffer)} buffer in ${fmtMonth(dip.month)}`;
-  else if (now < buffer && dip)
-    // Tight today but the forecast recovers above buffer — explains why the low
-    // point sits ABOVE current cash (upcoming income lands before any dip).
-    sub = `<span class="neg">Below your ${fmtGBP(buffer)} buffer now</span> — income lifts you back above · low ${fmtGBP(dip.cash)} in ${fmtMonth(dip.month)}`;
-  else if (dip)
-    sub = `Stays above your ${fmtGBP(buffer)} buffer · low ${fmtGBP(dip.cash)} in ${fmtMonth(dip.month)}`;
-  else sub = "";
-  return pillar("forecast", "Forecast", "cash now", fmtGBP(now), sparkSvg(ms), sub);
+  const below = dip.cash < buffer;
+  const big = `<span class="${below ? "neg" : ""}">${fmtGBP(dip.cash)}</span> <span class="of">lowest</span>`;
+  const sub = below
+    ? `<span class="neg">Dips below your ${fmtGBP(buffer)} buffer in ${fmtMonth(dip.month)}</span>`
+    : `Stays above your ${fmtGBP(buffer)} buffer · ${fmtMonth(dip.month)}`;
+  return pillar("forecast", "Forecast", `next ${ms.length} mo`, big, sparkSvg(ms), sub);
 }
 
 // ---- Spending pillar -------------------------------------------------------
