@@ -245,14 +245,9 @@ export function categoryManagerHtml(txns) {
     const tag = m
       ? (m.counts_as_spend ? "" : `<span class="cat-tag">not counted</span>`)
       : `<span class="cat-tag dim">from Emma</span>`;
-    const dec = (m && m.decision) || "";
-    const decSel = `<select class="cat-decision${dec ? " d-" + dec : ""}" data-dec="${encodeURIComponent(name)}" title="Keep / Review / Kill">
-      ${[["", "—"], ["keep", "Keep"], ["review", "Review"], ["kill", "Kill"]]
-        .map(([v, l]) => `<option value="${v}"${v === dec ? " selected" : ""}>${l}</option>`).join("")}</select>`;
     return `<div class="cat-row">
       <span class="cat-name">${name}</span>
       ${tag}
-      ${decSel}
       <button class="toggle ${counts ? "on" : ""}" data-toggle="${encodeURIComponent(name)}"
         title="${counts ? "Counts as spend" : "Excluded from spend"}"><span class="knob"></span></button>
       <button class="cat-move" data-move="${encodeURIComponent(name)}" title="Move / merge / delete"><i data-lucide="folder-input"></i></button>
@@ -283,18 +278,6 @@ export function wireCategoryManager(root, txns, onDone) {
       if (m) await saveRow("categories", { id: m.id, name: m.name, counts_as_spend: !nowCounts, sort_order: m.sort_order });
       else   await saveRow("categories", { name, counts_as_spend: !nowCounts, sort_order: 99 });
     } catch (e) { alert("Couldn't update category: " + e.message); }
-  });
-
-  // Keep / Review / Kill decision — feeds the Analysis screen. Creates a
-  // managed row on the fly for an as-yet-unmanaged Emma category.
-  root.querySelectorAll("[data-dec]").forEach((sel) => sel.onchange = async () => {
-    const name = decodeURIComponent(sel.dataset.dec);
-    const decision = sel.value || null;
-    const m = managedFor(name);
-    try {
-      if (m) await saveRow("categories", { id: m.id, name: m.name, decision });
-      else   await saveRow("categories", { name, counts_as_spend: true, sort_order: 99, decision });
-    } catch (e) { alert("Couldn't set decision: " + e.message); }
   });
 
   // Move / merge / delete — re-bucket a whole category's merchants at once.

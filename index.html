@@ -791,6 +791,12 @@ button.an-name:hover { color: var(--violet); }
 .an-decb.on.d-keep { background: color-mix(in srgb, var(--mint) 22%, transparent); color: var(--mint); }
 .an-decb.on.d-review { background: color-mix(in srgb, var(--amber) 22%, transparent); color: var(--amber); }
 .an-decb.on.d-kill { background: color-mix(in srgb, var(--coral) 22%, transparent); color: var(--coral); }
+.an-kept-toggle { display: inline-flex; align-items: center; gap: 6px; background: none; border: none;
+  color: var(--text-dim); font: inherit; font-family: var(--font-head); font-weight: 500; font-size: 15px;
+  cursor: pointer; padding: 2px 0; }
+.an-kept-toggle:hover { color: var(--text); }
+.an-kept-toggle i { width: 15px; height: 15px; }
+.an-more { font-size: 11.5px; margin-top: 8px; }
 @media (max-width: 640px) {
   .an-row { grid-template-columns: minmax(0,1fr) auto; row-gap: 8px; }
   .an-chip { grid-row: 1; }

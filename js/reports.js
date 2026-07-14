@@ -160,35 +160,6 @@ function totalsChart(months, monthlyTotals) {
   return `<div class="rp-chart glass">${bars}</div>`;
 }
 
-// ---- cost-to-kill (annualised recurring commitments) -----------------------
-function costToKill() {
-  // Fixed commitments still on the table — those marked Keep drop off.
-  const flows = state.recurring_flows
-    .filter((f) => f.kind === "expense" && f.decision !== "keep")
-    .map((f) => ({ f, yr: annualCost(f) }))
-    .filter((x) => x.yr > 0)
-    .sort((a, b) => b.yr - a.yr);
-  if (!flows.length) return "";
-  const totYr = flows.reduce((s, x) => s + x.yr, 0);
-  const rows = flows.slice(0, 12).map(({ f, yr }) => {
-    const d = f.decision;
-    const chip = d === "kill" ? `<span class="rp-kill-chip kill">kill</span>`
-      : d === "review" ? `<span class="rp-kill-chip review">review</span>` : "";
-    return `<div class="rp-kill-row">
-      <span class="rp-kill-name">${f.name}${chip}</span>
-      <span class="rp-kill-cat">${f.category || ""}</span>
-      <span class="rp-kill-mo">${fmtGBP(yr / 12)}/mo</span>
-      <span class="rp-kill-yr">${fmtGBP(yr)}/yr</span>
-    </div>`;
-  }).join("");
-  return `<div class="rp-sec">
-    <div class="rp-sec-head"><h2>Cost to kill</h2>
-      <span class="rp-sec-sub">Not-kept commitments · ${fmtGBP(totYr)}/yr total</span></div>
-    <p class="muted rp-kill-note">Fixed commitments you haven't marked Keep, biggest per-year first. Tag Keep/Review/Kill on a flow in Finances, then work them in <a href="#/analysis" class="rp-link">Analysis</a>.</p>
-    <div class="rp-kill">${rows}</div>
-  </div>`;
-}
-
 // ---- category drill-down ---------------------------------------------------
 function catDetail(cat, rules, excluded) {
   const { months, rows } = rankMerchants(txns, { rules, excluded, monthsBack, endInt: feedEndInt() });
@@ -244,7 +215,7 @@ function trendsBody() {
     <span class="rp-avg">${fmtGBP(r.avg)}/mo</span>
   </button>`).join("");
 
-  return controls + totalsChart(months, monthlyTotals) + summary + `<div class="mc-list">${list}</div>` + costToKill();
+  return controls + totalsChart(months, monthlyTotals) + summary + `<div class="mc-list">${list}</div>`;
 }
 
 // ---- render ----------------------------------------------------------------

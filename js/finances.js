@@ -37,11 +37,6 @@ const EVENT_TYPES = [
   { label: "Decision", value: "decision_point" },
 ];
 const KIND_SEG = [{ label: "Income", value: "income" }, { label: "Expense", value: "expense" }];
-// Keep / Review / Kill decision for the Analysis screen + Reports cost-to-kill.
-const DECISION_SEG = [
-  { label: "—", value: null }, { label: "Keep", value: "keep" },
-  { label: "Review", value: "review" }, { label: "Kill", value: "kill" },
-];
 const FREQ_SEG = [
   { label: "Weekly", value: "weekly" }, { label: "Monthly", value: "monthly" }, { label: "Yearly", value: "yearly" },
 ];
@@ -97,7 +92,7 @@ const SCHEMAS = {
     table: "recurring_flows", title: "Recurring flow", typeField: "frequency",
     blank: { name: "", kind: "expense", amount: 0, category: "Other", start_month: null,
              end_month: null, frequency: "monthly", interval_n: 1,
-             annual_uplift_pct: null, uplift_month: 4, emma_match_key: null, decision: null, notes: null },
+             annual_uplift_pct: null, uplift_month: 4, emma_match_key: null, notes: null },
     fields: [
       { key: "name", label: "Name", type: "text", placeholder: "Mortgage" },
       { key: "kind", label: "Type", type: "segmented", options: KIND_SEG },
@@ -116,9 +111,6 @@ const SCHEMAS = {
       { key: "annual_uplift_pct", label: "Annual uplift %", type: "percent", step: "0.5", help: "e.g. 3 for a 3% yearly rise" },
       { key: "uplift_month", label: "Uplift month (1–12)", type: "number", min: 1, max: 12,
         showIf: (d) => d.annual_uplift_pct != null && d.annual_uplift_pct !== "" },
-      { key: "decision", label: "Keep / Review / Kill", type: "segmented", options: DECISION_SEG,
-        help: "For the Analysis screen — Keep drops it off the cost-to-kill list.",
-        showIf: (d) => d.kind === "expense" },
       { key: "notes", label: "Notes", type: "textarea" },
       { key: "emma_match_key", type: "hidden" },  // links a detected flow back to its Emma merchant
     ],

@@ -129,6 +129,19 @@ export async function saveCategoryRule(match_key, category) {
   return data && data[0];
 }
 
+// Set a merchant's Keep/Review/Kill decision (feeds the Analysis screen). Upserts
+// on the natural key (household_id, match_key), snapshotting the merchant's current
+// effective category so writing a decision never blanks its categorisation. Pass
+// decision = null to clear. Decisions are per-MERCHANT now, not per-category.
+export async function saveMerchantDecision(match_key, category, decision) {
+  const hid = await resolveHousehold();
+  const { error } = await HP.from("category_rules")
+    .upsert({ household_id: hid, match_key, category, decision },
+            { onConflict: "household_id,match_key" });
+  if (error) throw error;
+  await loadAll();
+}
+
 // Link an Emma transaction to a project line item. Upsert on
 // (household_id, emma_txn_id) so re-linking a transaction MOVES it to the new
 // item rather than erroring on the unique index. `row` carries item_id,
