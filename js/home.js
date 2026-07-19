@@ -10,7 +10,7 @@
 import { state, subscribe, currentForecast, saveCategoryRule } from "./store.js";
 import { fmtGBP, fmtMonth } from "./sheet.js";
 import { fetchEmma } from "./emma.js";
-import { buildExcludedSet, effectiveCategory, txnKey, categoryNames, guessCategory } from "./categories.js";
+import { buildExcludedSet, effectiveCategory, txnKey, categoryNames, guessCategory, synthKey } from "./categories.js";
 import { reconcileMonth } from "./reconcile.js";
 
 // ---- Emma feed (lazy, shared memoised fetch) -------------------------------
@@ -128,9 +128,13 @@ function uncatCard() {
   if (!emmaTxns) return "";
   const excluded = buildExcludedSet(state.categories);
   const rules = rulesMap();
+  // A payment linked to a project line item is budgeted under Projects, not
+  // discretionary spend — it must never read as "needs a category".
+  const projLinked = new Set(state.project_item_txns.map((l) => l.emma_txn_id));
   const agg = new Map();
   for (const t of emmaTxns) {
     if (t.amount >= 0) continue;
+    if (projLinked.has(synthKey(t))) continue;
     if (excluded.has(effectiveCategory(t, rules))) continue;
     if (effectiveCategory(t, rules) !== "Uncategorised") continue;
     const k = txnKey(t);

@@ -9,7 +9,7 @@
 import { state, subscribe, saveRow, currentForecast, linkProjectTxn, unlinkProjectTxn } from "./store.js";
 import { openSheet, fmtGBP, fmtMonth } from "./sheet.js";
 import { projectAffordability } from "./engine.js";
-import { fetchEmma, cachedEmmaTxns } from "./emma.js";
+import { fetchEmma, cachedEmmaTxns, onFeedLoaded } from "./emma.js";
 import { txnKey, synthKey } from "./categories.js";
 import { renderTasksInto } from "./tasks.js";
 
@@ -57,6 +57,12 @@ export async function linkTransactionsToItem(itemId, txns) {
   // emma_txn_id), so both the target AND any source items need recomputing, or
   // the source is left overstating its actual.
   const affected = new Set([itemId]);
+  // Emma re-issues a pending txn a NEW id/merchant/date when it POSTS, so a link
+  // made while pending becomes an orphan (its id vanishes from the feed).
+  // Linking the posted version would double-count — so when we link a payment,
+  // drop any orphaned twin on the same item (same amount, id no longer in feed).
+  const feedKeys = new Set(cachedEmmaTxns().map(synthKey));
+  const feedLoaded = feedKeys.size > 0;   // never de-dupe against an unloaded feed
   for (const t of txns) {
     const key = synthKey(t);
     const prev = state.project_item_txns.find((l) => l.emma_txn_id === key);
@@ -65,10 +71,78 @@ export async function linkTransactionsToItem(itemId, txns) {
       item_id: itemId, emma_txn_id: key,
       merchant: txnKey(t), txn_date: t.date, amount: Math.abs(Number(t.amount) || 0),
     });
+    if (feedLoaded) {
+      const amt = Math.abs(Number(t.amount) || 0);
+      const twins = state.project_item_txns.filter((l) =>
+        l.item_id === itemId && l.emma_txn_id !== key
+        && !feedKeys.has(l.emma_txn_id)
+        && Math.abs((Number(l.amount) || 0) - amt) < 0.005);
+      for (const tw of twins) await unlinkProjectTxn(tw.id);
+    }
   }
   for (const id of affected) await recomputeItem(id);
   render();
 }
+
+// ---- link healing (Emma pending → posted churn) ----------------------------
+// When a pending txn posts, Emma changes its id, merchant AND date (only the
+// amount is stable), orphaning the link and leaving the posted txn unlinked in
+// General. On each real feed load we reconcile: re-point an orphan to its posted
+// twin, or drop it if a live twin is already linked to the same item. Tight
+// heuristic (exact amount + ≤5 days, and only when unambiguous) so we never
+// mis-map. Re-entrancy-guarded; DB writes emit() → the active screen repaints.
+const HEAL_DAYS = 5;
+let _healing = false;
+function usDate(s) {
+  const m = /(\d+)\/(\d+)\/(\d+)/.exec(s || "");
+  return m ? Date.UTC(+m[3], +m[1] - 1, +m[2]) : null;
+}
+function dayGap(a, b) {
+  const x = usDate(a), y = usDate(b);
+  return (x == null || y == null) ? Infinity : Math.abs(x - y) / 86400000;
+}
+export async function healProjectLinks(feed) {
+  if (_healing) return;
+  const txns = feed || cachedEmmaTxns();
+  if (!txns.length) return;                       // no feed → can't judge orphans
+  const feedKeys = new Set(txns.map(synthKey));
+  const orphans = state.project_item_txns.filter((l) => !feedKeys.has(l.emma_txn_id));
+  if (!orphans.length) return;
+  const sameAmt = (a, b) => Math.abs(a - b) < 0.005;
+  _healing = true;
+  const touched = new Set();
+  try {
+    for (const orphan of orphans) {
+      const oAmt = Math.abs(Number(orphan.amount) || 0);
+      const linkedKeys = new Set(state.project_item_txns.map((l) => l.emma_txn_id));
+      // (a) an UNLINKED posted txn, same amount, within the window → re-point.
+      const cands = txns.filter((t) => t.amount < 0
+        && !linkedKeys.has(synthKey(t))
+        && sameAmt(Math.abs(t.amount), oAmt)
+        && dayGap(t.date, orphan.txn_date) <= HEAL_DAYS);
+      if (cands.length === 1) {                    // exactly one → unambiguous
+        const t = cands[0];
+        await linkProjectTxn({
+          item_id: orphan.item_id, emma_txn_id: synthKey(t),
+          merchant: txnKey(t), txn_date: t.date, amount: Math.abs(Number(t.amount) || 0),
+        });
+        await unlinkProjectTxn(orphan.id);
+        touched.add(orphan.item_id);
+        continue;
+      }
+      // (b) a live twin already linked to the SAME item → orphan is a stale dup.
+      const liveTwin = state.project_item_txns.some((l) =>
+        l.id !== orphan.id && l.item_id === orphan.item_id
+        && feedKeys.has(l.emma_txn_id) && sameAmt(Number(l.amount) || 0, oAmt));
+      if (liveTwin) {
+        await unlinkProjectTxn(orphan.id);
+        touched.add(orphan.item_id);
+      }
+    }
+    for (const id of touched) await recomputeItem(id);
+  } finally { _healing = false; }
+}
+onFeedLoaded(healProjectLinks);
 // the cashflow number: derived sum when line items exist, else the manual field
 export const projectCost = (p) => {
   const its = itemsFor(p.id);

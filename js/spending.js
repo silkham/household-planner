@@ -361,8 +361,12 @@ function monthPanelHtml(month, d) {
 // spend, biggest first — one tap opens the same categorise sheet. This is the
 // backstop for strict categorisation: nothing new is silently mis-bucketed.
 function uncategorisedHtml(spend, rules) {
+  // Project-linked payments live under Projects, not discretionary spend — skip
+  // them so a linked-but-unmapped merchant never reads as "needs a category".
+  const projLinked = new Set(state.project_item_txns.map((l) => l.emma_txn_id));
   const agg = new Map();
   for (const t of spend) {
+    if (projLinked.has(synthKey(t))) continue;
     if (effCategory(t, rules) !== "Uncategorised") continue;
     const k = txnKey(t);
     const a = agg.get(k) || { key: k, count: 0, total: 0, sample: t };

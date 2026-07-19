@@ -37,6 +37,16 @@ export function clearEmmaCache() { _feedCache = null; }
 // Lets option-lists reuse the memoised txns without going async.
 export function cachedEmmaTxns() { return (_feedCache && _feedCache.txns) || []; }
 
+// Post-fetch hooks — run (fire-and-forget) after every REAL feed fetch, with
+// the fresh txns. Lets other modules react to a new feed without emma.js having
+// to import them (avoids a cycle). Used by projects.js to heal project links
+// whose Emma id churned when a pending txn posted.
+const _onLoaded = [];
+export function onFeedLoaded(cb) { _onLoaded.push(cb); }
+function _fireFeedLoaded(txns) {
+  for (const cb of _onLoaded) { try { Promise.resolve(cb(txns)).catch(() => {}); } catch {} }
+}
+
 // Invoke the emma-sheet function, self-healing a stale/expired session.
 // Supabase access tokens last ~1h and iOS PWAs suspend the background refresh,
 // so a foregrounded app can send an expired token → the function's
@@ -87,6 +97,7 @@ export async function fetchEmma(force = false) {
     type: get(r, "Type"),
   }));
   _feedCache = { header, txns };
+  _fireFeedLoaded(txns);
   return _feedCache;
 }
 
